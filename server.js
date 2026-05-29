@@ -164,22 +164,32 @@ async function handleVto(req, res) {
   const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   jobs.set(jobId, { status: "pending" });
 
-  // If person_url is a /results/... local path, read it from disk and convert to base64
+  // If person_url is a /results/... local path, read it from disk to raw base64
   let personValue = person;
   if (typeof person === "string" && person.startsWith("/results/")) {
     try {
       const buf = await readFile(join(__dirname, person));
-      personValue = `data:image/jpeg;base64,${buf.toString("base64")}`;
+      personValue = buf.toString("base64");
     } catch (e) {
       jsonResponse(res, { ok: false, error: `local person read failed: ${e.message}` }, 400);
       return;
     }
   }
 
+  // BFL VTO expects RAW base64 — NOT a data: URL. Strip the prefix if present.
+  // See docs: https://docs.bfl.ml/kontext/kontext_image_editing
+  const stripDataPrefix = v => {
+    if (typeof v !== "string") return v;
+    if (v.startsWith("data:")) {
+      const comma = v.indexOf(",");
+      return comma >= 0 ? v.slice(comma + 1) : v;
+    }
+    return v;
+  };
+
   const payload = {
-    person: personValue,
-    garment,
-    // BFL VTO prompt format: identity preservation + enumerative garment description ending with "of image 2"
+    person: stripDataPrefix(personValue),
+    garment: stripDataPrefix(garment),
     prompt: (body.prompt && body.prompt.trim()) || (isComposite
       ? "The person of image 1, maintaining exactly their face and pose, wearing the garments of image 2."
       : "The person of image 1, maintaining exactly their face and pose, wearing the garment of image 2."),
