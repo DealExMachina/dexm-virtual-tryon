@@ -333,10 +333,13 @@
       position: relative;
     }
     .product-img-wrap img {
-      width: 100%; height: 100%;
+      width: calc(100% - 24px);
+      height: calc(100% - 24px);
+      margin: 12px;
       object-fit: contain;
-      padding: 16px;
       display: block;
+      border-radius: 4px;
+      background: #FFFFFF;
       transition: transform 0.5s ease;
     }
     .product-card:hover .product-img-wrap img { transform: scale(1.04); }
@@ -477,6 +480,7 @@
       width: 100%; height: 100%;
       object-fit: cover;
       display: block;
+      border-radius: 3px;
     }
     .mini-tile .label {
       font-family: var(--sans);
