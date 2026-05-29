@@ -178,13 +178,23 @@
       cursor: pointer;
       background: var(--card);
       border: 1px solid var(--line);
+      border-radius: 6px;
       overflow: hidden;
-      transition: all 0.3s ease;
+      transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+                  border-color 0.4s ease,
+                  box-shadow 0.5s ease;
     }
-    .preset-card:hover { border-color: var(--ink-mid); }
+    .preset-card:hover {
+      border-color: var(--accent-soft);
+      transform: translateY(-3px);
+      box-shadow: 0 0 0 1px rgba(201, 165, 114, 0.25),
+                  0 24px 48px -16px rgba(201, 165, 114, 0.14);
+    }
     .preset-card.selected {
       border-color: var(--accent);
-      box-shadow: 0 0 0 1px var(--accent), 0 16px 40px rgba(0,0,0,0.5);
+      transform: translateY(-3px);
+      box-shadow: 0 0 0 1px var(--accent),
+                  0 28px 56px -14px rgba(201, 165, 114, 0.22);
     }
     .preset-card .img {
       aspect-ratio: 3/4;
@@ -288,14 +298,20 @@
     .product-card {
       background: var(--card);
       border: 1px solid var(--line);
+      border-radius: 6px;
       cursor: pointer;
-      transition: all 0.4s ease;
+      overflow: hidden;
       position: relative;
+      transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+                  border-color 0.4s ease,
+                  box-shadow 0.5s ease;
     }
     .product-card:hover {
-      border-color: var(--accent);
-      transform: translateY(-3px);
-      box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+      border-color: var(--accent-soft);
+      transform: translateY(-4px);
+      box-shadow: 0 0 0 1px rgba(201, 165, 114, 0.3),
+                  0 28px 56px -16px rgba(201, 165, 114, 0.16),
+                  0 16px 40px -20px rgba(201, 165, 114, 0.10);
     }
     .product-img-wrap {
       aspect-ratio: 3/4;
@@ -327,6 +343,7 @@
       background: transparent;
       color: var(--accent);
       border: 1px solid var(--accent);
+      border-radius: 4px;
       padding: 12px 28px;
       font-family: var(--sans);
       font-size: 11px;
@@ -334,7 +351,7 @@
       text-transform: uppercase;
       font-weight: 400;
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: all 0.3s ease;
     }
     .try-on-btn:hover {
       background: var(--accent);
@@ -368,6 +385,7 @@
     .result-frame {
       background: var(--card);
       border: 1px solid var(--line);
+      border-radius: 6px;
       overflow: hidden;
     }
     .result-label {
@@ -435,6 +453,7 @@
     .mini-tile .box {
       background: var(--card);
       border: 1px solid var(--line);
+      border-radius: 4px;
       aspect-ratio: 1;
       overflow: hidden;
       display: flex;
@@ -481,6 +500,7 @@
       padding: 22px;
       background: var(--card);
       border: 1px solid var(--line);
+      border-radius: 6px;
     }
     .pair-eyebrow {
       font-family: var(--sans);
@@ -501,6 +521,7 @@
       object-fit: cover;
       background: var(--bg-alt);
       border: 1px solid var(--line);
+      border-radius: 4px;
     }
     .pair-info { flex: 1; min-width: 0; }
     .pair-info .name {
@@ -530,6 +551,7 @@
       background: transparent;
       color: var(--accent);
       border: 1px solid var(--accent);
+      border-radius: 4px;
       padding: 11px 22px;
       font-family: var(--sans);
       font-size: 11px;
@@ -537,7 +559,7 @@
       text-transform: uppercase;
       font-weight: 400;
       cursor: pointer;
-      transition: all 0.25s ease;
+      transition: all 0.3s ease;
     }
     .btn:hover {
       background: var(--accent);
@@ -566,6 +588,7 @@
       padding: 22px 20px;
       background: linear-gradient(180deg, rgba(201,165,114,0.08) 0%, rgba(201,165,114,0.02) 100%);
       border: 1px solid var(--accent);
+      border-radius: 6px;
       color: var(--ink);
       position: relative;
     }
