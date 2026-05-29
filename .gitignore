@@ -5,3 +5,4 @@ results/*
 !results/preset_*.jpg
 !results/garment_*.jpg
 !results/tryon_*.jpg
+!results/combo_*.jpg

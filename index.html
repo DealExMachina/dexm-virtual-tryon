@@ -11,7 +11,9 @@
       --bg-alt: #1A1A1A;
       --ink: #F4F4F4;
       --ink-dim: #888;
-      --accent: #CCFF00;
+      --accent: #FF6B35;
+      --accent-soft: #FF8C5A;
+      --accent-dim: rgba(255, 107, 53, 0.12);
       --line: #2A2A2A;
       --card: #161616;
     }
@@ -71,7 +73,19 @@
       max-width: 1300px;
       margin: 0 auto;
       border-bottom: 1px solid var(--line);
+      position: relative;
+      overflow: hidden;
     }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -100px; right: -100px;
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(255,107,53,0.18) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .hero > * { position: relative; z-index: 1; }
     .hero-eyebrow {
       font-family: 'JetBrains Mono', monospace;
       font-size: 11px;
@@ -90,7 +104,10 @@
     }
     .hero h1 em {
       font-style: normal;
-      color: var(--accent);
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-soft) 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
     }
     .hero p {
       font-size: 18px;
@@ -268,7 +285,7 @@
     .try-on-overlay {
       position: absolute;
       inset: 0;
-      background: rgba(204, 255, 0, 0.85);
+      background: rgba(255, 107, 53, 0.92);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -460,7 +477,10 @@
       cursor: pointer;
       transition: all 0.15s;
     }
-    .btn:hover { transform: translateY(-1px); }
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(255, 107, 53, 0.35);
+    }
     .btn-dark {
       background: var(--bg);
       color: var(--accent);

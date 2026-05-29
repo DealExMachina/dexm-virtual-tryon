@@ -141,7 +141,26 @@ async function handleVto(req, res) {
   const isComposite = !!body.garment_b64;
   const personIsLocal = !!body.person_b64 || body.person_url?.startsWith("/");
 
-  console.log(`[vto] person=${personIsLocal ? '<base64/local>' : body.person_url?.slice(0, 60) + '...'} garment=${isComposite ? `<composite base64, ${Math.round(garment.length/1024)}KB>` : garment?.slice(0, 60) + '...'}`);
+  // Validate base64 payloads — reject malformed input early
+  function validateB64(label, value) {
+    if (!value?.startsWith("data:")) return null;
+    const comma = value.indexOf(",");
+    if (comma < 0) return `${label} missing comma after data: prefix`;
+    const b64 = value.slice(comma + 1);
+    if (b64.length < 100) return `${label} base64 too short (${b64.length} chars) — image failed to compose`;
+    if (b64.length % 4 !== 0) return `${label} base64 length ${b64.length} not a multiple of 4`;
+    return null;
+  }
+  for (const [label, v] of [["person", person], ["garment", garment]]) {
+    const err = validateB64(label, v);
+    if (err) {
+      console.log(`[vto] REJECT: ${err}`);
+      jsonResponse(res, { ok: false, error: err }, 400);
+      return;
+    }
+  }
+
+  console.log(`[vto] person=${personIsLocal ? `<base64 ${Math.round((person?.length||0)/1024)}KB>` : body.person_url?.slice(0, 60) + '...'} garment=${isComposite ? `<composite ${Math.round(garment.length/1024)}KB>` : garment?.slice(0, 60) + '...'}`);
   const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   jobs.set(jobId, { status: "pending" });
 

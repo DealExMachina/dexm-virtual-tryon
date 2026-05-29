@@ -7,7 +7,7 @@
   <meta name="description" content="Virtual try-on demo powered by Black Forest Labs FLUX VTO. Pick a body type, click a garment, see the result.">
   <meta property="og:title" content="DEXM — Virtual Try-On">
   <meta property="og:description" content="See yourself in it — before you own it. Powered by FLUX VTO.">
-  <meta property="og:image" content="https://raw.githubusercontent.com/jeanbapt/dexm-virtual-tryon/main/results/tryon_viking_biker_black.jpg">
+  <meta property="og:image" content="https://raw.githubusercontent.com/jeanbapt/dexm-virtual-tryon/main/results/combo_viking_tee_geo_bomber_black.jpg">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -17,7 +17,9 @@
       --bg-alt: #1A1A1A;
       --ink: #F4F4F4;
       --ink-dim: #888;
-      --accent: #CCFF00;
+      --accent: #FF6B35;
+      --accent-soft: #FF8C5A;
+      --accent-glow: rgba(255, 107, 53, 0.35);
       --line: #2A2A2A;
       --card: #161616;
     }
@@ -29,6 +31,7 @@
       overflow-x: hidden;
       line-height: 1.5;
     }
+
     nav {
       display: flex;
       justify-content: space-between;
@@ -36,9 +39,7 @@
       padding: 20px 40px;
       background: var(--bg);
       border-bottom: 1px solid var(--line);
-      position: sticky;
-      top: 0;
-      z-index: 100;
+      position: sticky; top: 0; z-index: 100;
     }
     .logo {
       font-family: 'JetBrains Mono', monospace;
@@ -73,7 +74,18 @@
       max-width: 1300px;
       margin: 0 auto;
       border-bottom: 1px solid var(--line);
+      position: relative;
+      overflow: hidden;
     }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -100px; right: -100px;
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(255,107,53,0.18) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero > * { position: relative; z-index: 1; }
     .hero-eyebrow {
       font-family: 'JetBrains Mono', monospace;
       font-size: 11px;
@@ -92,14 +104,16 @@
     }
     .hero h1 em {
       font-style: normal;
-      color: var(--accent);
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-soft) 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
     }
     .hero p {
       font-size: 18px;
       color: var(--ink-dim);
       max-width: 560px;
     }
-
     .demo-banner {
       display: inline-flex;
       align-items: center;
@@ -120,10 +134,7 @@
       border-radius: 50%;
       animation: pulse 1.6s ease-in-out infinite;
     }
-    @keyframes pulse {
-      0%, 100% { opacity: 0.4; }
-      50% { opacity: 1; }
-    }
+    @keyframes pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
 
     .section {
       padding: 70px 40px;
@@ -168,17 +179,17 @@
       transition: all 0.2s;
     }
     .preset-card:hover { border-color: var(--ink-dim); }
-    .preset-card.selected { border-color: var(--accent); }
+    .preset-card.selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent), 0 8px 24px var(--accent-glow);
+    }
     .preset-card.disabled { opacity: 0.4; cursor: not-allowed; }
     .preset-card .img {
       aspect-ratio: 3/4;
       background: var(--bg-alt);
       overflow: hidden;
     }
-    .preset-card img {
-      width: 100%; height: 100%;
-      object-fit: cover;
-    }
+    .preset-card img { width: 100%; height: 100%; object-fit: cover; }
     .preset-card .meta {
       padding: 10px 12px;
       border-top: 1px solid var(--line);
@@ -239,10 +250,24 @@
       border: 1px solid var(--line);
       cursor: pointer;
       transition: all 0.2s;
+      position: relative;
     }
     .product-card:hover {
       border-color: var(--accent);
       transform: translateY(-2px);
+    }
+    .product-card.added::after {
+      content: 'ADDED';
+      position: absolute;
+      top: 8px; right: 8px;
+      background: var(--accent);
+      color: var(--bg);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      padding: 3px 7px;
+      letter-spacing: 1.5px;
+      font-weight: 700;
+      z-index: 2;
     }
     .product-img-wrap {
       aspect-ratio: 3/4;
@@ -258,7 +283,7 @@
     .try-on-overlay {
       position: absolute;
       inset: 0;
-      background: rgba(204, 255, 0, 0.85);
+      background: rgba(255, 107, 53, 0.92);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -363,6 +388,8 @@
       width: 100%; height: 100%;
       object-fit: cover;
     }
+    .mini-tile .box.two-up { padding: 0; }
+    .mini-tile .box.two-up img { width: 50%; }
     .mini-tile .label {
       font-family: 'JetBrains Mono', monospace;
       font-size: 9px;
@@ -385,6 +412,115 @@
       color: var(--ink-dim);
       text-align: center;
       min-height: 16px;
+    }
+
+    /* Pairing panel + bundle */
+    #pairingPanel {
+      margin-top: 18px;
+      padding: 18px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      animation: fadein 0.4s ease-out;
+    }
+    .pair-eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .pair-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .pair-row img {
+      width: 70px; height: 90px;
+      object-fit: cover;
+      background: var(--bg-alt);
+      border: 1px solid var(--line);
+    }
+    .pair-info { flex: 1; min-width: 0; }
+    .pair-info .name {
+      font-size: 18px;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+    .pair-info .desc {
+      font-size: 12px;
+      color: var(--ink-dim);
+      line-height: 1.4;
+      margin-bottom: 10px;
+    }
+    .btn {
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      padding: 10px 18px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px var(--accent-glow);
+    }
+    .btn-dark {
+      background: var(--bg);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+    .btn-block {
+      display: block;
+      width: 100%;
+      margin-top: 10px;
+      padding: 12px;
+    }
+    #bundleBanner {
+      display: none;
+      margin-top: 14px;
+      padding: 16px;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-soft) 100%);
+      color: var(--bg);
+      animation: fadein 0.4s ease-out;
+    }
+    #bundleBanner .urgent {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 6px;
+    }
+    #bundleBanner .price-line {
+      font-size: 14px;
+      line-height: 1.5;
+      text-align: center;
+      font-weight: 500;
+    }
+    #bundleBanner .price-line .old {
+      text-decoration: line-through;
+      opacity: 0.55;
+    }
+    #bundleBanner .price-line .new {
+      font-size: 30px;
+      font-weight: 700;
+      margin-left: 6px;
+      letter-spacing: -0.5px;
+    }
+    #countdown {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-align: center;
+      margin-top: 6px;
+      font-weight: 600;
     }
 
     .stats {
@@ -440,9 +576,12 @@
       letter-spacing: 2px;
       text-transform: uppercase;
       font-weight: 700;
-      transition: transform 0.15s;
+      transition: all 0.15s;
     }
-    .cta-section a:hover { transform: translateY(-2px); }
+    .cta-section a:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 32px var(--accent-glow);
+    }
 
     footer {
       padding: 32px 40px;
@@ -465,10 +604,7 @@
       animation: spin 0.8s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-
-    .fade-in {
-      animation: fadein 0.4s ease-out;
-    }
+    .fade-in { animation: fadein 0.4s ease-out; }
     @keyframes fadein { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
 
     @media (max-width: 1024px) {
@@ -497,7 +633,7 @@
     <div class="hero-eyebrow">// FLUX VTO · build any body · any garment</div>
     <h1>See yourself <em>in it</em>—before you own it.</h1>
     <p>A virtual try-on layer for any e-commerce stack. Generate a model, pick a piece, see the result in seconds. Powered by Black Forest Labs' FLUX VTO.</p>
-    <div class="demo-banner"><div class="dot"></div>Static demo · pre-generated results · click any garment</div>
+    <div class="demo-banner"><div class="dot"></div>Static demo · pre-rendered with FLUX VTO · click any garment</div>
   </section>
 
   <section class="section">
@@ -505,7 +641,7 @@
       <span class="step-num">01 /</span>
       <h2>Who are you building for?</h2>
     </div>
-    <p>Every shopper, every body. In this static demo, results are pre-rendered for the Northman preset. Other models work in the live version.</p>
+    <p>Every shopper, every body. In this static demo, results are pre-rendered for the Northman preset.</p>
     <div class="preset-grid" id="presetModels"></div>
   </section>
 
@@ -516,7 +652,7 @@
           <span class="step-num">02 /</span>
           <h2>Pick a piece.</h2>
         </div>
-        <p>Click any garment — pre-rendered result appears instantly on the right.</p>
+        <p>Click any garment. Real FLUX VTO results — not mockups.</p>
         <div class="catalog-tabs">
           <button class="catalog-tab active" onclick="filterCatalog('all', event)">All</button>
           <button class="catalog-tab" onclick="filterCatalog('shirts', event)">Tops</button>
@@ -577,7 +713,6 @@
   </footer>
 
   <script>
-    // All assets served from the repo's raw GitHub URLs so this single file deploys to any static host.
     const RAW = 'https://raw.githubusercontent.com/jeanbapt/dexm-virtual-tryon/main/results';
 
     const products = [
@@ -604,7 +739,22 @@
       { name:"Young",     tag:"20s · Slim",   img:`${RAW}/preset_young.jpg`,       live:false },
     ];
 
-    let currentPresetIdx = 0;
+    // Stylist pairings — each shirt has a matching jacket and a pre-rendered combo
+    const fittingPairs = {
+      "Echo Tee":       "Night Bomber",
+      "Onyx Camp":      "Onyx Biker",
+      "Field Shirt":    "Utility Field",
+      "Coast Linen":    "Wool Overshirt",
+      "Navy Oxford":    "Varsity",
+      "Heather Polo":   "Suede Trucker",
+      "Night Bomber":   "Echo Tee",
+      "Suede Trucker":  "Heather Polo",
+      "Utility Field":  "Field Shirt",
+      "Onyx Biker":     "Onyx Camp",
+      "Wool Overshirt": "Coast Linen",
+      "Varsity":        "Navy Oxford",
+    };
+    const findProduct = name => products.find(p => p.name === name);
 
     function renderPresets() {
       const wrap = document.getElementById('presetModels');
@@ -619,7 +769,6 @@
       document.querySelectorAll('.preset-card')[0].classList.add('selected');
     }
     function selectPreset(idx) {
-      currentPresetIdx = idx;
       document.querySelectorAll('.preset-card').forEach((el, i) => el.classList.toggle('selected', i === idx));
       document.getElementById('personThumb').innerHTML = `<img src="${presetModels[idx].img}">`;
     }
@@ -630,7 +779,7 @@
       grid.innerHTML = filtered.map(p => {
         const idx = products.indexOf(p);
         return `
-          <div class="product-card" onclick="tryGarment(${idx})">
+          <div class="product-card" id="card_${idx}" onclick="tryGarment(${idx})">
             <div class="product-img-wrap">
               <img src="${p.img}" alt="${p.name}" loading="lazy">
               <div class="try-on-overlay"><button class="try-on-btn">TRY ON</button></div>
@@ -648,28 +797,125 @@
       renderProducts(cat);
     }
 
+    let currentBase = null;
+
     async function tryGarment(idx) {
       const p = products[idx];
+      currentBase = p;
+      document.querySelectorAll('.product-card').forEach(c => c.classList.remove('added'));
       document.getElementById('garmentSlot').innerHTML = `<img src="${p.img}">`;
+      document.getElementById('garmentSlot').classList.remove('two-up');
       document.getElementById('resultSlot').innerHTML = `<div class="spinner"></div><div>Generating ${p.name}…</div>`;
       document.getElementById('resultBadge').classList.add('on');
+      document.getElementById('pairingPanel')?.remove();
+
       const status = document.getElementById('vtoStatus');
       status.textContent = `loading pre-rendered result…`;
 
-      // Simulate the real generation latency (under 4s per BFL VTO benchmark)
-      await new Promise(r => setTimeout(r, 1800 + Math.random() * 1200));
+      await new Promise(r => setTimeout(r, 1600 + Math.random() * 900));
 
       const resultUrl = `${RAW}/tryon_viking_${p.slug}.jpg`;
       const img = new Image();
       img.onload = () => {
-        document.getElementById('resultSlot').innerHTML = `<img src="${resultUrl}" class="fade-in" alt="${p.name}">`;
+        document.getElementById('resultSlot').innerHTML = `<img src="${resultUrl}" class="fade-in">`;
         status.innerHTML = `<span style="color:var(--accent)">✓ wearing <strong>${p.name}</strong></span>`;
+        showPairing(p);
       };
       img.onerror = () => {
-        document.getElementById('resultSlot').innerHTML = `<div class="result-icon">⚠</div><div>Pre-rendered result not available</div>`;
+        document.getElementById('resultSlot').innerHTML = `<div class="result-icon">⚠</div><div>Result not pre-rendered</div>`;
         status.innerHTML = `<span style="color:#888">demo data missing for ${p.slug}</span>`;
       };
       img.src = resultUrl;
+    }
+
+    function showPairing(base) {
+      const partnerName = fittingPairs[base.name];
+      const partner = findProduct(partnerName);
+      if (!partner) return;
+      window._pair = { base, partner };
+
+      const bundle = Number(base.price) + Number(partner.price);
+      const discount = Math.round(bundle * 0.10);
+      const final = bundle - discount;
+
+      const panel = document.createElement('div');
+      panel.id = 'pairingPanel';
+      panel.innerHTML = `
+        <div class="pair-eyebrow">// STACK ONE PIECE</div>
+        <div class="pair-row">
+          <img src="${partner.img}" alt="${partner.name}">
+          <div class="pair-info">
+            <div class="name">${partner.name}</div>
+            <div class="desc">Pairs with ${base.name}. Layered try-on in one VTO call.</div>
+            <button class="btn btn-dark" onclick="addPairing()">+ ADD ${partner.category === 'jackets' ? 'OUTER' : 'TOP'}</button>
+          </div>
+        </div>
+        <div id="bundleBanner">
+          <div class="urgent">⏱ BOOK IN THE NEXT 24H — SAVE 10%</div>
+          <div class="price-line">
+            ${base.name} + ${partner.name}<br>
+            <span class="old">${bundle}$</span> → <span class="new">${final}$</span>
+          </div>
+          <div id="countdown">expires in 23:59:42</div>
+          <button class="btn btn-block" style="background:var(--bg);color:var(--accent);" onclick="bookBundle()">BOOK THE BUNDLE · ${final}$</button>
+        </div>`;
+      document.getElementById('vtoStatus').after(panel);
+    }
+
+    async function addPairing() {
+      const { base, partner } = window._pair || {};
+      if (!base || !partner) return;
+
+      // Two-up garment thumb
+      const gs = document.getElementById('garmentSlot');
+      gs.classList.add('two-up');
+      gs.innerHTML = `<img src="${base.img}"><img src="${partner.img}">`;
+
+      document.getElementById('resultSlot').innerHTML = `<div class="spinner"></div><div>Composing both pieces…</div>`;
+      const status = document.getElementById('vtoStatus');
+      status.textContent = `composing ${base.name} + ${partner.name}…`;
+
+      await new Promise(r => setTimeout(r, 2200 + Math.random() * 800));
+
+      // Resolve which combo file to load (shirt comes first in our combos)
+      const shirt = base.category === 'shirts' ? base : partner;
+      const jacket = base.category === 'jackets' ? base : partner;
+      const comboUrl = `${RAW}/combo_viking_${shirt.slug}_${jacket.slug}.jpg`;
+
+      const img = new Image();
+      img.onload = () => {
+        document.getElementById('resultSlot').innerHTML = `<img src="${comboUrl}" class="fade-in">`;
+        status.innerHTML = `<span style="color:var(--accent)">✓ full look — <strong>${base.name}</strong> + <strong>${partner.name}</strong></span>`;
+        document.getElementById('bundleBanner').style.display = 'block';
+        startCountdown();
+        const baseIdx = products.indexOf(base);
+        const partnerIdx = products.indexOf(partner);
+        document.getElementById(`card_${baseIdx}`)?.classList.add('added');
+        document.getElementById(`card_${partnerIdx}`)?.classList.add('added');
+      };
+      img.onerror = () => {
+        document.getElementById('resultSlot').innerHTML = `<div class="result-icon">⚠</div><div>Combo not pre-rendered</div>`;
+        status.innerHTML = `<span style="color:#888">combo demo data missing</span>`;
+      };
+      img.src = comboUrl;
+    }
+
+    function bookBundle() {
+      document.getElementById('vtoStatus').innerHTML = '<span style="color:var(--accent)">✓ saved to basket. reserved for 24h.</span>';
+    }
+
+    function startCountdown() {
+      if (window._cd) clearInterval(window._cd);
+      let t = 24*60*60 - 18;
+      window._cd = setInterval(() => {
+        t--;
+        if (t <= 0) { clearInterval(window._cd); return; }
+        const h = String(Math.floor(t/3600)).padStart(2,'0');
+        const m = String(Math.floor((t%3600)/60)).padStart(2,'0');
+        const s = String(t%60).padStart(2,'0');
+        const el = document.getElementById('countdown');
+        if (el) el.textContent = `expires in ${h}:${m}:${s}`;
+      }, 1000);
     }
 
     renderPresets();
