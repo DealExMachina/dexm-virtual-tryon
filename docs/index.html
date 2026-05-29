@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DEXM — Virtual Try-On</title>
+  <meta name="description" content="Virtual try-on demo powered by Black Forest Labs FLUX VTO. Pick a body type, click a garment, see the result.">
+  <meta property="og:title" content="DEXM — Virtual Try-On">
+  <meta property="og:description" content="See yourself in it — before you own it. Powered by FLUX VTO.">
+  <meta property="og:image" content="https://raw.githubusercontent.com/jeanbapt/dexm-virtual-tryon/main/results/tryon_viking_biker_black.jpg">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0E0E0E;
+      --bg-alt: #1A1A1A;
+      --ink: #F4F4F4;
+      --ink-dim: #888;
+      --accent: #CCFF00;
+      --line: #2A2A2A;
+      --card: #161616;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Space Grotesk', sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      overflow-x: hidden;
+      line-height: 1.5;
+    }
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 40px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 4px;
+    }
+    .logo .dot { color: var(--accent); }
+    .nav-links { display: flex; gap: 28px; list-style: none; }
+    .nav-links a {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      text-decoration: none;
+      color: var(--ink-dim);
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--accent); }
+    .nav-badge {
+      background: var(--accent);
+      color: var(--bg);
+      font-size: 9px;
+      padding: 2px 7px;
+      letter-spacing: 1px;
+      font-weight: 700;
+      margin-left: 6px;
+    }
+
+    .hero {
+      padding: 80px 40px 60px;
+      max-width: 1300px;
+      margin: 0 auto;
+      border-bottom: 1px solid var(--line);
+    }
+    .hero-eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-size: 84px;
+      line-height: 0.95;
+      font-weight: 500;
+      letter-spacing: -2px;
+      margin-bottom: 28px;
+      max-width: 900px;
+    }
+    .hero h1 em {
+      font-style: normal;
+      color: var(--accent);
+    }
+    .hero p {
+      font-size: 18px;
+      color: var(--ink-dim);
+      max-width: 560px;
+    }
+
+    .demo-banner {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 20px;
+      padding: 8px 14px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+    }
+    .demo-banner .dot {
+      width: 6px; height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: pulse 1.6s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 1; }
+    }
+
+    .section {
+      padding: 70px 40px;
+      max-width: 1300px;
+      margin: 0 auto;
+      border-bottom: 1px solid var(--line);
+    }
+    .step-head {
+      display: flex;
+      align-items: baseline;
+      gap: 18px;
+      margin-bottom: 8px;
+    }
+    .step-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 2px;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .step-head h2 {
+      font-size: 36px;
+      font-weight: 500;
+      letter-spacing: -0.5px;
+    }
+    .section > p {
+      color: var(--ink-dim);
+      font-size: 15px;
+      margin-bottom: 32px;
+    }
+
+    .preset-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 12px;
+    }
+    .preset-card {
+      cursor: pointer;
+      background: var(--card);
+      border: 2px solid var(--line);
+      overflow: hidden;
+      transition: all 0.2s;
+    }
+    .preset-card:hover { border-color: var(--ink-dim); }
+    .preset-card.selected { border-color: var(--accent); }
+    .preset-card.disabled { opacity: 0.4; cursor: not-allowed; }
+    .preset-card .img {
+      aspect-ratio: 3/4;
+      background: var(--bg-alt);
+      overflow: hidden;
+    }
+    .preset-card img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+    .preset-card .meta {
+      padding: 10px 12px;
+      border-top: 1px solid var(--line);
+    }
+    .preset-card .meta .name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .preset-card .meta .tag {
+      font-size: 10px;
+      color: var(--ink-dim);
+      margin-top: 2px;
+    }
+    .preset-card.disabled .meta .tag::after {
+      content: " · LIVE ONLY";
+      color: var(--accent);
+    }
+
+    .work {
+      display: grid;
+      grid-template-columns: 1.15fr 1fr;
+      gap: 56px;
+      align-items: start;
+    }
+    .catalog-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--line);
+    }
+    .catalog-tab {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 12px 18px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--ink-dim);
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .catalog-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+    .product-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .product-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+    .product-img-wrap {
+      aspect-ratio: 3/4;
+      overflow: hidden;
+      background: var(--bg-alt);
+      position: relative;
+    }
+    .product-img-wrap img {
+      width: 100%; height: 100%;
+      object-fit: contain;
+      padding: 12px;
+    }
+    .try-on-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(204, 255, 0, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .product-card:hover .try-on-overlay { opacity: 1; }
+    .try-on-btn {
+      background: var(--bg);
+      color: var(--accent);
+      border: none;
+      padding: 12px 24px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .product-info {
+      padding: 12px 14px;
+      border-top: 1px solid var(--line);
+    }
+    .product-info h4 {
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+    .product-info .price {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--ink-dim);
+    }
+
+    .result-col { position: sticky; top: 88px; }
+    .result-frame {
+      background: var(--card);
+      border: 1px solid var(--line);
+      overflow: hidden;
+    }
+    .result-label {
+      padding: 10px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+      border-bottom: 1px solid var(--line);
+    }
+    .live-dot {
+      display: none;
+      background: var(--accent);
+      color: var(--bg);
+      font-size: 9px;
+      padding: 2px 7px;
+      letter-spacing: 1px;
+      font-weight: 700;
+    }
+    .live-dot.on { display: inline-block; }
+    .result-img-wrap {
+      aspect-ratio: 3/4;
+      background: var(--bg-alt);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      color: var(--ink-dim);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+    .result-img-wrap img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+    .result-icon {
+      font-size: 36px;
+      opacity: 0.4;
+    }
+
+    .mini-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+      align-items: stretch;
+    }
+    .mini-tile { flex: 1; text-align: center; }
+    .mini-tile .box {
+      background: var(--card);
+      border: 1px solid var(--line);
+      aspect-ratio: 1;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .mini-tile .box img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+    .mini-tile .label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+      margin-top: 6px;
+    }
+    .mini-plus {
+      align-self: center;
+      color: var(--accent);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 16px;
+      padding-bottom: 18px;
+    }
+    .status {
+      margin-top: 14px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--ink-dim);
+      text-align: center;
+      min-height: 16px;
+    }
+
+    .stats {
+      padding: 60px 40px;
+      max-width: 1300px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 32px;
+      border-bottom: 1px solid var(--line);
+    }
+    .stat .num {
+      font-size: 56px;
+      font-weight: 500;
+      letter-spacing: -2px;
+      color: var(--accent);
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+    .stat .lbl {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+    }
+
+    .cta-section {
+      padding: 80px 40px;
+      max-width: 1300px;
+      margin: 0 auto;
+      text-align: center;
+      border-bottom: 1px solid var(--line);
+    }
+    .cta-section h3 {
+      font-size: 36px;
+      font-weight: 500;
+      letter-spacing: -0.5px;
+      margin-bottom: 14px;
+    }
+    .cta-section p {
+      color: var(--ink-dim);
+      margin-bottom: 28px;
+    }
+    .cta-section a {
+      display: inline-block;
+      background: var(--accent);
+      color: var(--bg);
+      text-decoration: none;
+      padding: 14px 28px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-weight: 700;
+      transition: transform 0.15s;
+    }
+    .cta-section a:hover { transform: translateY(-2px); }
+
+    footer {
+      padding: 32px 40px;
+      text-align: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      color: var(--ink-dim);
+      text-transform: uppercase;
+    }
+    footer .accent { color: var(--accent); }
+    footer a { color: var(--ink-dim); text-decoration: none; }
+    footer a:hover { color: var(--accent); }
+
+    .spinner {
+      width: 32px; height: 32px;
+      border: 2px solid var(--line);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .fade-in {
+      animation: fadein 0.4s ease-out;
+    }
+    @keyframes fadein { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+
+    @media (max-width: 1024px) {
+      .work { grid-template-columns: 1fr; }
+      .preset-grid { grid-template-columns: repeat(3, 1fr); }
+      .product-grid { grid-template-columns: repeat(2, 1fr); }
+      .hero h1 { font-size: 56px; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .result-col { position: static; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="logo">DEXM<span class="dot">.</span></div>
+    <ul class="nav-links">
+      <li><a href="#">Index</a></li>
+      <li><a href="#">Releases</a></li>
+      <li><a href="#">Virtual Try-On<span class="nav-badge">BETA</span></a></li>
+      <li><a href="https://github.com/jeanbapt/dexm-virtual-tryon" target="_blank">Studio</a></li>
+    </ul>
+  </nav>
+
+  <section class="hero">
+    <div class="hero-eyebrow">// FLUX VTO · build any body · any garment</div>
+    <h1>See yourself <em>in it</em>—before you own it.</h1>
+    <p>A virtual try-on layer for any e-commerce stack. Generate a model, pick a piece, see the result in seconds. Powered by Black Forest Labs' FLUX VTO.</p>
+    <div class="demo-banner"><div class="dot"></div>Static demo · pre-generated results · click any garment</div>
+  </section>
+
+  <section class="section">
+    <div class="step-head">
+      <span class="step-num">01 /</span>
+      <h2>Who are you building for?</h2>
+    </div>
+    <p>Every shopper, every body. In this static demo, results are pre-rendered for the Northman preset. Other models work in the live version.</p>
+    <div class="preset-grid" id="presetModels"></div>
+  </section>
+
+  <section class="section">
+    <div class="work">
+      <div>
+        <div class="step-head">
+          <span class="step-num">02 /</span>
+          <h2>Pick a piece.</h2>
+        </div>
+        <p>Click any garment — pre-rendered result appears instantly on the right.</p>
+        <div class="catalog-tabs">
+          <button class="catalog-tab active" onclick="filterCatalog('all', event)">All</button>
+          <button class="catalog-tab" onclick="filterCatalog('shirts', event)">Tops</button>
+          <button class="catalog-tab" onclick="filterCatalog('jackets', event)">Outer</button>
+        </div>
+        <div class="product-grid" id="productGrid"></div>
+      </div>
+
+      <div class="result-col">
+        <div class="step-head">
+          <span class="step-num">03 /</span>
+          <h2>The fit.</h2>
+        </div>
+        <p>Identity preserved. Real garment textures. Real interaction.</p>
+        <div class="result-frame">
+          <div class="result-label">
+            <span>RESULT</span>
+            <span id="resultBadge" class="live-dot">LIVE</span>
+          </div>
+          <div id="resultSlot" class="result-img-wrap">
+            <div class="result-icon">▢</div>
+            <div>Pick a garment to start</div>
+          </div>
+        </div>
+        <div class="mini-row">
+          <div class="mini-tile">
+            <div class="box" id="personThumb"></div>
+            <div class="label">PERSON</div>
+          </div>
+          <div class="mini-plus">+</div>
+          <div class="mini-tile">
+            <div class="box" id="garmentSlot">
+              <div style="color:var(--ink-dim); font-size:18px;">▢</div>
+            </div>
+            <div class="label">GARMENT</div>
+          </div>
+        </div>
+        <div id="vtoStatus" class="status"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="stats">
+    <div class="stat"><div class="num">&lt;4s</div><div class="lbl">/ Generation</div></div>
+    <div class="stat"><div class="num">+40%</div><div class="lbl">/ Conversion lift</div></div>
+    <div class="stat"><div class="num">−25%</div><div class="lbl">/ Returns</div></div>
+    <div class="stat"><div class="num">∞</div><div class="lbl">/ Looks</div></div>
+  </section>
+
+  <section class="cta-section">
+    <h3>Ship VTO on your storefront.</h3>
+    <p>The full source — server, prompts, multi-garment composition — is open. Drop it into any Node app and call FLUX directly.</p>
+    <a href="https://github.com/jeanbapt/dexm-virtual-tryon" target="_blank">→ View the repo</a>
+  </section>
+
+  <footer>
+    DEXM<span class="accent">.</span> Virtual Try-On · Powered by <a href="https://bfl.ai" target="_blank" class="accent">FLUX VTO</a> · <a href="https://github.com/jeanbapt/dexm-virtual-tryon" target="_blank">Source</a>
+  </footer>
+
+  <script>
+    // All assets served from the repo's raw GitHub URLs so this single file deploys to any static host.
+    const RAW = 'https://raw.githubusercontent.com/jeanbapt/dexm-virtual-tryon/main/results';
+
+    const products = [
+      { name:"Echo Tee",       price:65,  category:"shirts",  slug:"tee_geo",      img:`${RAW}/garment_tee_geo.jpg` },
+      { name:"Onyx Camp",      price:120, category:"shirts",  slug:"shirt_black",  img:`${RAW}/garment_shirt_black.jpg` },
+      { name:"Field Shirt",    price:95,  category:"shirts",  slug:"shirt_olive",  img:`${RAW}/garment_shirt_olive.jpg` },
+      { name:"Coast Linen",    price:110, category:"shirts",  slug:"shirt_linen",  img:`${RAW}/garment_shirt_linen.jpg` },
+      { name:"Navy Oxford",    price:130, category:"shirts",  slug:"shirt_oxford", img:`${RAW}/garment_shirt_oxford.jpg` },
+      { name:"Heather Polo",   price:85,  category:"shirts",  slug:"polo_grey",    img:`${RAW}/garment_polo_grey.jpg` },
+      { name:"Night Bomber",   price:280, category:"jackets", slug:"bomber_black", img:`${RAW}/garment_bomber_black.jpg` },
+      { name:"Suede Trucker",  price:380, category:"jackets", slug:"trucker_tan",  img:`${RAW}/garment_trucker_tan.jpg` },
+      { name:"Utility Field",  price:240, category:"jackets", slug:"utility_oliv", img:`${RAW}/garment_utility_oliv.jpg` },
+      { name:"Onyx Biker",     price:420, category:"jackets", slug:"biker_black",  img:`${RAW}/garment_biker_black.jpg` },
+      { name:"Wool Overshirt", price:295, category:"jackets", slug:"overshirt_cr", img:`${RAW}/garment_overshirt_cr.jpg` },
+      { name:"Varsity",        price:310, category:"jackets", slug:"varsity_char", img:`${RAW}/garment_varsity_char.jpg` },
+    ];
+
+    const presetModels = [
+      { name:"Northman",  tag:"50s · Stocky", img:`${RAW}/preset_viking.jpg`,      live:true },
+      { name:"Coastline", tag:"30s · Lean",   img:`${RAW}/preset_slender_med.jpg`, live:false },
+      { name:"Locs",      tag:"40s · Dreads", img:`${RAW}/preset_afro_rasta.jpg`,  live:false },
+      { name:"Senior",    tag:"70s · Elder",  img:`${RAW}/preset_old_man.jpg`,     live:false },
+      { name:"Everyman",  tag:"40s · Medium", img:`${RAW}/preset_medium_age.jpg`,  live:false },
+      { name:"Young",     tag:"20s · Slim",   img:`${RAW}/preset_young.jpg`,       live:false },
+    ];
+
+    let currentPresetIdx = 0;
+
+    function renderPresets() {
+      const wrap = document.getElementById('presetModels');
+      wrap.innerHTML = presetModels.map((m, i) => `
+        <div class="preset-card${m.live ? '' : ' disabled'}" onclick="${m.live ? `selectPreset(${i})` : ''}">
+          <div class="img"><img src="${m.img}" alt="${m.name}"></div>
+          <div class="meta">
+            <div class="name">${m.name}</div>
+            <div class="tag">${m.tag}</div>
+          </div>
+        </div>`).join('');
+      document.querySelectorAll('.preset-card')[0].classList.add('selected');
+    }
+    function selectPreset(idx) {
+      currentPresetIdx = idx;
+      document.querySelectorAll('.preset-card').forEach((el, i) => el.classList.toggle('selected', i === idx));
+      document.getElementById('personThumb').innerHTML = `<img src="${presetModels[idx].img}">`;
+    }
+
+    function renderProducts(filter='all') {
+      const grid = document.getElementById('productGrid');
+      const filtered = filter === 'all' ? products : products.filter(p => p.category === filter);
+      grid.innerHTML = filtered.map(p => {
+        const idx = products.indexOf(p);
+        return `
+          <div class="product-card" onclick="tryGarment(${idx})">
+            <div class="product-img-wrap">
+              <img src="${p.img}" alt="${p.name}" loading="lazy">
+              <div class="try-on-overlay"><button class="try-on-btn">TRY ON</button></div>
+            </div>
+            <div class="product-info">
+              <h4>${p.name}</h4>
+              <span class="price">${p.price} $</span>
+            </div>
+          </div>`;
+      }).join('');
+    }
+    function filterCatalog(cat, ev) {
+      document.querySelectorAll('.catalog-tab').forEach(t => t.classList.remove('active'));
+      (ev?.target || event.target).classList.add('active');
+      renderProducts(cat);
+    }
+
+    async function tryGarment(idx) {
+      const p = products[idx];
+      document.getElementById('garmentSlot').innerHTML = `<img src="${p.img}">`;
+      document.getElementById('resultSlot').innerHTML = `<div class="spinner"></div><div>Generating ${p.name}…</div>`;
+      document.getElementById('resultBadge').classList.add('on');
+      const status = document.getElementById('vtoStatus');
+      status.textContent = `loading pre-rendered result…`;
+
+      // Simulate the real generation latency (under 4s per BFL VTO benchmark)
+      await new Promise(r => setTimeout(r, 1800 + Math.random() * 1200));
+
+      const resultUrl = `${RAW}/tryon_viking_${p.slug}.jpg`;
+      const img = new Image();
+      img.onload = () => {
+        document.getElementById('resultSlot').innerHTML = `<img src="${resultUrl}" class="fade-in" alt="${p.name}">`;
+        status.innerHTML = `<span style="color:var(--accent)">✓ wearing <strong>${p.name}</strong></span>`;
+      };
+      img.onerror = () => {
+        document.getElementById('resultSlot').innerHTML = `<div class="result-icon">⚠</div><div>Pre-rendered result not available</div>`;
+        status.innerHTML = `<span style="color:#888">demo data missing for ${p.slug}</span>`;
+      };
+      img.src = resultUrl;
+    }
+
+    renderPresets();
+    renderProducts();
+    selectPreset(0);
+  </script>
+</body>
+</html>
