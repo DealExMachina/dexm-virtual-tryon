@@ -1,0 +1,8 @@
+{
+  "name": "dexm-virtual-tryon",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file=.env server.js"
+  }
+}

@@ -1,0 +1,6 @@
+.env
+.claude/
+results/*
+# Keep preset models and garment packshots shipped with the demo
+!results/preset_*.jpg
+!results/garment_*.jpg

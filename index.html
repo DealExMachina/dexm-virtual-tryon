@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DEXM — Virtual Try-On</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0E0E0E;
+      --bg-alt: #1A1A1A;
+      --ink: #F4F4F4;
+      --ink-dim: #888;
+      --accent: #CCFF00;
+      --line: #2A2A2A;
+      --card: #161616;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Space Grotesk', sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      overflow-x: hidden;
+      line-height: 1.5;
+    }
+
+    /* NAV */
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 40px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      color: var(--ink);
+    }
+    .logo .dot { color: var(--accent); }
+    .nav-links { display: flex; gap: 28px; list-style: none; }
+    .nav-links a {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      text-decoration: none;
+      color: var(--ink-dim);
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--accent); }
+    .nav-badge {
+      background: var(--accent);
+      color: var(--bg);
+      font-size: 9px;
+      padding: 2px 7px;
+      letter-spacing: 1px;
+      font-weight: 700;
+      margin-left: 6px;
+    }
+
+    /* HERO */
+    .hero {
+      padding: 80px 40px 60px;
+      max-width: 1300px;
+      margin: 0 auto;
+      border-bottom: 1px solid var(--line);
+    }
+    .hero-eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-size: 84px;
+      line-height: 0.95;
+      font-weight: 500;
+      letter-spacing: -2px;
+      margin-bottom: 28px;
+      max-width: 900px;
+    }
+    .hero h1 em {
+      font-style: normal;
+      color: var(--accent);
+    }
+    .hero p {
+      font-size: 18px;
+      color: var(--ink-dim);
+      max-width: 560px;
+      line-height: 1.55;
+    }
+
+    /* SECTION */
+    .section {
+      padding: 70px 40px;
+      max-width: 1300px;
+      margin: 0 auto;
+      border-bottom: 1px solid var(--line);
+    }
+    .step-head {
+      display: flex;
+      align-items: baseline;
+      gap: 18px;
+      margin-bottom: 8px;
+    }
+    .step-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 2px;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .step-head h2 {
+      font-size: 36px;
+      font-weight: 500;
+      letter-spacing: -0.5px;
+    }
+    .section > p {
+      color: var(--ink-dim);
+      font-size: 15px;
+      margin-bottom: 32px;
+    }
+
+    /* PRESET GRID */
+    .preset-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+    .preset-card {
+      cursor: pointer;
+      background: var(--card);
+      border: 2px solid var(--line);
+      overflow: hidden;
+      transition: all 0.2s;
+    }
+    .preset-card:hover { border-color: var(--ink-dim); }
+    .preset-card.selected { border-color: var(--accent); }
+    .preset-card .img {
+      aspect-ratio: 3/4;
+      background: var(--bg-alt);
+      overflow: hidden;
+    }
+    .preset-card img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+      filter: contrast(1.02);
+    }
+    .preset-card .meta {
+      padding: 10px 12px;
+      border-top: 1px solid var(--line);
+    }
+    .preset-card .meta .name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .preset-card .meta .tag {
+      font-size: 10px;
+      color: var(--ink-dim);
+      margin-top: 2px;
+    }
+
+    details summary {
+      cursor: pointer;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+      padding: 16px;
+      text-align: center;
+      list-style: none;
+    }
+    details summary:hover { color: var(--accent); }
+    details textarea {
+      width: 100%;
+      padding: 14px 16px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--ink);
+      resize: vertical;
+      box-sizing: border-box;
+      margin-top: 12px;
+    }
+    details textarea:focus { outline: none; border-color: var(--accent); }
+
+    /* WORK GRID — catalog + result */
+    .work {
+      display: grid;
+      grid-template-columns: 1.15fr 1fr;
+      gap: 56px;
+      align-items: start;
+    }
+
+    .catalog-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--line);
+    }
+    .catalog-tab {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-weight: 500;
+      padding: 12px 18px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--ink-dim);
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+      margin-bottom: -1px;
+    }
+    .catalog-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+    .product-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .product-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+    .product-img-wrap {
+      aspect-ratio: 3/4;
+      overflow: hidden;
+      background: var(--bg-alt);
+      position: relative;
+    }
+    .product-img-wrap img {
+      width: 100%; height: 100%;
+      object-fit: contain;
+      padding: 12px;
+      display: block;
+      transition: transform 0.3s;
+    }
+    .product-card:hover .product-img-wrap img { transform: scale(1.05); }
+    .try-on-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(204, 255, 0, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .product-card:hover .try-on-overlay { opacity: 1; }
+    .try-on-btn {
+      background: var(--bg);
+      color: var(--accent);
+      border: none;
+      padding: 12px 24px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .product-info {
+      padding: 12px 14px;
+      border-top: 1px solid var(--line);
+    }
+    .product-info h4 {
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+    .product-info .price {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--ink-dim);
+    }
+
+    /* RESULT panel */
+    .result-col { position: sticky; top: 88px; }
+    .result-frame {
+      background: var(--card);
+      border: 1px solid var(--line);
+      overflow: hidden;
+    }
+    .result-label {
+      padding: 10px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+      border-bottom: 1px solid var(--line);
+    }
+    .live-dot {
+      display: none;
+      background: var(--accent);
+      color: var(--bg);
+      font-size: 9px;
+      padding: 2px 7px;
+      letter-spacing: 1px;
+      font-weight: 700;
+    }
+    .live-dot.on { display: inline-block; }
+    .result-img-wrap {
+      aspect-ratio: 3/4;
+      background: var(--bg-alt);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      color: var(--ink-dim);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+    .result-img-wrap img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .result-icon {
+      font-size: 36px;
+      opacity: 0.4;
+    }
+
+    .mini-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+      align-items: stretch;
+    }
+    .mini-tile {
+      flex: 1;
+      text-align: center;
+    }
+    .mini-tile .box {
+      background: var(--card);
+      border: 1px solid var(--line);
+      aspect-ratio: 1;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .mini-tile .box img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .mini-tile .label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+      margin-top: 6px;
+    }
+    .mini-plus {
+      align-self: center;
+      color: var(--accent);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 16px;
+      padding-bottom: 18px;
+    }
+
+    .status {
+      margin-top: 14px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--ink-dim);
+      text-align: center;
+      min-height: 16px;
+    }
+
+    /* Pairing panel */
+    #pairingPanel {
+      margin-top: 18px;
+      padding: 18px;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .pair-eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .pair-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .pair-row img {
+      width: 70px; height: 90px;
+      object-fit: cover;
+      background: var(--bg-alt);
+      border: 1px solid var(--line);
+    }
+    .pair-info {
+      flex: 1; min-width: 0;
+    }
+    .pair-info .name {
+      font-size: 18px;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+    .pair-info .desc {
+      font-size: 12px;
+      color: var(--ink-dim);
+      line-height: 1.4;
+      margin-bottom: 10px;
+    }
+
+    .btn {
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      padding: 10px 18px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-dark {
+      background: var(--bg);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+    .btn-block {
+      display: block;
+      width: 100%;
+      margin-top: 10px;
+      padding: 12px;
+    }
+    .btn-full { padding: 16px 32px; font-size: 12px; }
+
+    #bundleBanner {
+      display: none;
+      margin-top: 14px;
+      padding: 14px;
+      background: var(--accent);
+      color: var(--bg);
+    }
+    #bundleBanner .urgent {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 6px;
+    }
+    #bundleBanner .price-line {
+      font-size: 14px;
+      line-height: 1.5;
+      text-align: center;
+      font-weight: 500;
+    }
+    #bundleBanner .price-line .old {
+      text-decoration: line-through;
+      opacity: 0.5;
+    }
+    #bundleBanner .price-line .new {
+      font-size: 28px;
+      font-weight: 700;
+      margin-left: 6px;
+    }
+    #countdown {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-align: center;
+      margin-top: 6px;
+      font-weight: 600;
+    }
+
+    /* STATS */
+    .stats {
+      padding: 60px 40px;
+      max-width: 1300px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 32px;
+      border-bottom: 1px solid var(--line);
+    }
+    .stat .num {
+      font-size: 56px;
+      font-weight: 500;
+      letter-spacing: -2px;
+      color: var(--accent);
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+    .stat .lbl {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+    }
+
+    /* FOOTER */
+    footer {
+      padding: 32px 40px;
+      text-align: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      color: var(--ink-dim);
+      text-transform: uppercase;
+    }
+    footer .accent { color: var(--accent); }
+
+    .spinner {
+      width: 32px; height: 32px;
+      border: 2px solid var(--line);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 1024px) {
+      .work { grid-template-columns: 1fr; }
+      .preset-grid { grid-template-columns: repeat(3, 1fr); }
+      .product-grid { grid-template-columns: repeat(2, 1fr); }
+      .hero h1 { font-size: 56px; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .result-col { position: static; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav>
+    <div class="logo">DEXM<span class="dot">.</span></div>
+    <ul class="nav-links">
+      <li><a href="#">Index</a></li>
+      <li><a href="#">Releases</a></li>
+      <li><a href="#">Virtual Try-On<span class="nav-badge">BETA</span></a></li>
+      <li><a href="#">Studio</a></li>
+    </ul>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-eyebrow">// FLUX VTO · build any body · any garment</div>
+    <h1>See yourself <em>in it</em>—before you own it.</h1>
+    <p>A virtual try-on layer for any e-commerce stack. Generate a model, pick a piece, see the result in seconds. Powered by Black Forest Labs' FLUX VTO.</p>
+  </section>
+
+  <!-- STEP 01 — WHO -->
+  <section class="section">
+    <div class="step-head">
+      <span class="step-num">01 /</span>
+      <h2>Who are you building for?</h2>
+    </div>
+    <p>Every shopper, every body. Pick a preset — or generate a custom model.</p>
+
+    <div class="preset-grid" id="presetModels"></div>
+
+    <details>
+      <summary>+ Generate a custom model</summary>
+      <textarea id="modelPrompt" rows="3">Studio portrait of a person in their 30s wearing a plain white crew-neck t-shirt, neutral grey backdrop, soft editorial lighting, relaxed pose, shot from waist up, clean catalog photography</textarea>
+      <div style="text-align:center; margin-top:14px;">
+        <button class="btn" id="generateModelBtn" onclick="generateCustomModel()">Generate Model</button>
+        <div id="modelStatus" class="status"></div>
+      </div>
+    </details>
+  </section>
+
+  <!-- STEP 02 + 03 — work area -->
+  <section class="section">
+    <div class="work">
+      <!-- Left: Catalog -->
+      <div>
+        <div class="step-head">
+          <span class="step-num">02 /</span>
+          <h2>Pick a piece.</h2>
+        </div>
+        <p>Click any garment — the AI dresses your model instantly.</p>
+
+        <div class="catalog-tabs">
+          <button class="catalog-tab active" onclick="filterCatalog('all', event)">All</button>
+          <button class="catalog-tab" onclick="filterCatalog('shirts', event)">Tops</button>
+          <button class="catalog-tab" onclick="filterCatalog('jackets', event)">Outer</button>
+        </div>
+
+        <div class="product-grid" id="productGrid"></div>
+      </div>
+
+      <!-- Right: Result (sticky) -->
+      <div class="result-col">
+        <div class="step-head">
+          <span class="step-num">03 /</span>
+          <h2>The fit.</h2>
+        </div>
+        <p>Identity preserved. Real garment textures. Real interaction.</p>
+
+        <div class="result-frame">
+          <div class="result-label">
+            <span>RESULT</span>
+            <span id="resultBadge" class="live-dot">LIVE</span>
+          </div>
+          <div id="resultSlot" class="result-img-wrap">
+            <div class="result-icon">▢</div>
+            <div>Pick a garment to start</div>
+          </div>
+        </div>
+
+        <div class="mini-row">
+          <div class="mini-tile">
+            <div class="box" id="personThumb"></div>
+            <div class="label">PERSON</div>
+          </div>
+          <div class="mini-plus">+</div>
+          <div class="mini-tile">
+            <div class="box" id="garmentSlot">
+              <div style="color:var(--ink-dim); font-size:18px;">▢</div>
+            </div>
+            <div class="label">GARMENT</div>
+          </div>
+        </div>
+
+        <div id="vtoStatus" class="status"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <section class="stats">
+    <div class="stat"><div class="num">&lt;4s</div><div class="lbl">/ Generation</div></div>
+    <div class="stat"><div class="num">+40%</div><div class="lbl">/ Conversion lift</div></div>
+    <div class="stat"><div class="num">−25%</div><div class="lbl">/ Returns</div></div>
+    <div class="stat"><div class="num">∞</div><div class="lbl">/ Looks</div></div>
+  </section>
+
+  <footer>
+    DEXM<span class="accent">.</span> Virtual Try-On · Powered by <span class="accent">FLUX VTO</span> · Prototype 2026
+  </footer>
+
+  <script>
+    // ─── PRODUCTS (12 fictional pieces) ───
+    const products = [
+      { name: "Echo Tee",        price: 65,  category: "shirts", img: "/results/garment_tee_geo.jpg",      desc: "plain white cotton t-shirt with a small black geometric triangle chest print" },
+      { name: "Onyx Camp",       price: 120, category: "shirts", img: "/results/garment_shirt_black.jpg",  desc: "black oversized short-sleeve camp collar shirt with subtle tonal embroidery" },
+      { name: "Field Shirt",     price: 95,  category: "shirts", img: "/results/garment_shirt_olive.jpg",  desc: "olive green workwear shirt with two chest cargo pockets and brass buttons" },
+      { name: "Coast Linen",     price: 110, category: "shirts", img: "/results/garment_shirt_linen.jpg",  desc: "cream linen long-sleeve shirt with subtle vertical sand-tone stripes" },
+      { name: "Navy Oxford",     price: 130, category: "shirts", img: "/results/garment_shirt_oxford.jpg", desc: "navy blue oxford button-down shirt with contrast white collar and cuffs" },
+      { name: "Heather Polo",    price: 85,  category: "shirts", img: "/results/garment_polo_grey.jpg",    desc: "heather grey ribbed knit polo shirt with three-button placket" },
+      { name: "Night Bomber",    price: 280, category: "jackets", img: "/results/garment_bomber_black.jpg",  desc: "black nylon MA-1 bomber jacket with orange lining at the cuffs and waistband" },
+      { name: "Suede Trucker",   price: 380, category: "jackets", img: "/results/garment_trucker_tan.jpg",  desc: "tan suede trucker jacket with cream stitching and two chest flap pockets" },
+      { name: "Utility Field",   price: 240, category: "jackets", img: "/results/garment_utility_oliv.jpg", desc: "olive cotton utility field jacket with four large flap pockets and storm cuffs" },
+      { name: "Onyx Biker",      price: 420, category: "jackets", img: "/results/garment_biker_black.jpg",  desc: "black leather biker jacket with asymmetric zip and silver hardware" },
+      { name: "Wool Overshirt",  price: 295, category: "jackets", img: "/results/garment_overshirt_cr.jpg", desc: "cream brushed wool overshirt with patch pockets and horn buttons" },
+      { name: "Varsity",         price: 310, category: "jackets", img: "/results/garment_varsity_char.jpg", desc: "charcoal wool varsity jacket with cream leather sleeves and striped knit cuffs" },
+    ];
+
+    // ─── Stylist pairings ───
+    const fittingPairs = {
+      "Echo Tee": "Night Bomber",
+      "Onyx Camp": "Onyx Biker",
+      "Field Shirt": "Utility Field",
+      "Coast Linen": "Wool Overshirt",
+      "Navy Oxford": "Varsity",
+      "Heather Polo": "Suede Trucker",
+      "Night Bomber": "Echo Tee",
+      "Suede Trucker": "Heather Polo",
+      "Utility Field": "Field Shirt",
+      "Onyx Biker": "Onyx Camp",
+      "Wool Overshirt": "Coast Linen",
+      "Varsity": "Navy Oxford",
+    };
+    const findProduct = name => products.find(p => p.name === name);
+
+    // ─── Preset models ───
+    const presetModels = [
+      { name: "Northman",     tag: "50s · Stocky",  img: "/results/preset_viking.jpg" },
+      { name: "Coastline",    tag: "30s · Lean",    img: "/results/preset_slender_med.jpg" },
+      { name: "Locs",         tag: "40s · Dreads",  img: "/results/preset_afro_rasta.jpg" },
+      { name: "Senior",       tag: "70s · Elder",   img: "/results/preset_old_man.jpg" },
+      { name: "Everyman",     tag: "40s · Medium",  img: "/results/preset_medium_age.jpg" },
+      { name: "Young",        tag: "20s · Slim",    img: "/results/preset_young.jpg" },
+    ];
+
+    let currentModelUrl = null;
+    let selectedGarmentIdx = null;
+
+    function renderPresets() {
+      const wrap = document.getElementById('presetModels');
+      wrap.innerHTML = presetModels.map((m, i) => `
+        <div class="preset-card" onclick="selectPreset(${i})" data-idx="${i}">
+          <div class="img"><img src="${m.img}" alt="${m.name}" onerror="this.style.display='none'"></div>
+          <div class="meta">
+            <div class="name">${m.name}</div>
+            <div class="tag">${m.tag}</div>
+          </div>
+        </div>`).join('');
+    }
+    function selectPreset(idx) {
+      const m = presetModels[idx];
+      currentModelUrl = m.img;
+      document.querySelectorAll('.preset-card').forEach((el, i) => {
+        el.classList.toggle('selected', i === idx);
+      });
+      const thumb = document.getElementById('personThumb');
+      thumb.innerHTML = `<img src="${m.img}" alt="${m.name}">`;
+    }
+
+    function renderProducts(filter = 'all') {
+      const grid = document.getElementById('productGrid');
+      grid.innerHTML = '';
+      const filtered = filter === 'all' ? products : products.filter(p => p.category === filter);
+      filtered.forEach(p => {
+        const idx = products.indexOf(p);
+        grid.innerHTML += `
+          <div class="product-card" onclick="tryGarment(${idx})">
+            <div class="product-img-wrap">
+              <img src="${p.img}" alt="${p.name}" loading="lazy">
+              <div class="try-on-overlay"><button class="try-on-btn">TRY ON</button></div>
+            </div>
+            <div class="product-info">
+              <h4>${p.name}</h4>
+              <span class="price">${p.price} $</span>
+            </div>
+          </div>`;
+      });
+    }
+    function filterCatalog(cat, ev) {
+      document.querySelectorAll('.catalog-tab').forEach(t => t.classList.remove('active'));
+      (ev?.target || event.target).classList.add('active');
+      renderProducts(cat);
+    }
+
+    // ─── Polling helper ───
+    async function pollJob(jobId, onProgress) {
+      for (let i = 0; i < 240; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        try {
+          const r = await fetch(`/api/job?id=${jobId}`);
+          const d = await r.json();
+          if (d.status === 'ready') return d;
+          if (d.status === 'failed') return d;
+        } catch (e) { continue; }
+        if (onProgress) onProgress(i);
+      }
+      return { status: 'timeout' };
+    }
+
+    // ─── Custom model generation ───
+    async function generateCustomModel() {
+      const btn = document.getElementById('generateModelBtn');
+      const status = document.getElementById('modelStatus');
+      const promptText = document.getElementById('modelPrompt').value.trim();
+      if (!promptText) { status.innerHTML = '<span style="color:#FF5555">Enter a prompt</span>'; return; }
+      btn.disabled = true; btn.textContent = 'GENERATING…';
+      status.textContent = 'submitting to FLUX…';
+      try {
+        const r = await fetch('/api/generate', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ prompt: promptText, width: 832, height: 1216 }),
+        });
+        const { job_id } = await r.json();
+        const d = await pollJob(job_id, i => status.textContent = `generating… ${i*2}s`);
+        if (d.ok) {
+          currentModelUrl = d.local_path;
+          presetModels.unshift({ name: 'Just generated', tag: 'Custom', img: d.local_path });
+          if (presetModels.length > 6) presetModels.pop();
+          renderPresets(); selectPreset(0);
+          status.innerHTML = '<span style="color:var(--accent)">✓ ready — pick a piece below</span>';
+          btn.textContent = 'GENERATE ANOTHER';
+          document.getElementById('productGrid').scrollIntoView({ behavior:'smooth' });
+        } else {
+          status.innerHTML = `<span style="color:#FF5555">failed: ${d.detail?.status || d.error || d.status}</span>`;
+          btn.textContent = 'RETRY';
+        }
+      } catch (e) {
+        status.innerHTML = `<span style="color:#FF5555">server error: ${e.message}</span>`;
+        btn.textContent = 'RETRY';
+      }
+      btn.disabled = false;
+    }
+
+    // ─── Single garment try-on ───
+    async function tryGarment(idx) {
+      if (!currentModelUrl) {
+        document.getElementById('vtoStatus').innerHTML = '<span style="color:#FF5555">Pick a model first (Step 01)</span>';
+        document.querySelector('.preset-grid').scrollIntoView({ behavior:'smooth' });
+        return;
+      }
+      selectedGarmentIdx = idx;
+      const p = products[idx];
+      document.getElementById('garmentSlot').innerHTML = `<img src="${p.img}" alt="${p.name}">`;
+      document.getElementById('resultSlot').innerHTML = `<div class="spinner"></div><div>Generating ${p.name}…</div>`;
+      document.getElementById('resultBadge').classList.add('on');
+      const status = document.getElementById('vtoStatus');
+      status.textContent = `submitting ${p.name}…`;
+      document.getElementById('pairingPanel')?.remove();
+
+      try {
+        const r = await fetch('/api/vto', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+            person_url: currentModelUrl,
+            garment_url: p.img,
+            prompt: `The person of image 1, maintaining exactly their face and pose, wearing the ${p.desc} of image 2.`,
+          }),
+        });
+        const { job_id } = await r.json();
+        const d = await pollJob(job_id, i => status.textContent = `generating ${p.name}… ${i*2}s`);
+        if (d.ok) {
+          document.getElementById('resultSlot').innerHTML = `<img src="${d.local_path}" alt="result">`;
+          status.innerHTML = `<span style="color:var(--accent)">✓ wearing <strong>${p.name}</strong></span>`;
+          showPairing(p, d.local_path);
+        } else {
+          document.getElementById('resultSlot').innerHTML = `<div class="result-icon">⚠</div><div style="color:#FF5555">${d.detail?.status || d.error || d.status}</div>`;
+          status.innerHTML = `<span style="color:#FF5555">try-on failed</span>`;
+        }
+      } catch (e) {
+        document.getElementById('resultSlot').innerHTML = `<div class="result-icon">⚠</div><div style="color:#FF5555">Server error</div>`;
+        status.innerHTML = `<span style="color:#FF5555">${e.message}</span>`;
+      }
+    }
+
+    // ─── Pairing panel ───
+    function showPairing(base, resultImageUrl) {
+      const partnerName = fittingPairs[base.name];
+      const partner = findProduct(partnerName);
+      if (!partner) return;
+      window._pairingState = { base, partner, resultImageUrl };
+
+      let panel = document.getElementById('pairingPanel');
+      if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'pairingPanel';
+        document.getElementById('vtoStatus').after(panel);
+      }
+      const bundle = Number(base.price) + Number(partner.price);
+      const discount = Math.round(bundle * 0.10);
+      const final = bundle - discount;
+      panel.innerHTML = `
+        <div class="pair-eyebrow">// STACK ONE PIECE</div>
+        <div class="pair-row">
+          <img src="${partner.img}" alt="${partner.name}">
+          <div class="pair-info">
+            <div class="name">${partner.name}</div>
+            <div class="desc">Pairs with ${base.name}. Layered try-on in one call.</div>
+            <button class="btn btn-dark" onclick="addPairing()">+ ADD ${partner.category === 'jackets' ? 'OUTER' : 'TOP'}</button>
+          </div>
+        </div>
+        <div id="bundleBanner">
+          <div class="urgent">⏱ BOOK IN THE NEXT 24H — SAVE 10%</div>
+          <div class="price-line">
+            ${base.name} + ${partner.name}<br>
+            <span class="old">${bundle}$</span> → <span class="new">${final}$</span>
+          </div>
+          <div id="countdown">expires in 23:59:42</div>
+          <button class="btn btn-block" style="background:var(--bg);color:var(--accent);" onclick="bookBundle()">BOOK THE BUNDLE · ${final}$</button>
+        </div>`;
+    }
+
+    function bookBundle() {
+      document.getElementById('vtoStatus').innerHTML = '<span style="color:var(--accent)">✓ saved to basket. reserved for 24h.</span>';
+    }
+
+    function startCountdown() {
+      if (window._cd) clearInterval(window._cd);
+      let t = 24*60*60 - 18;
+      window._cd = setInterval(() => {
+        t--;
+        if (t <= 0) { clearInterval(window._cd); return; }
+        const h = String(Math.floor(t/3600)).padStart(2,'0');
+        const m = String(Math.floor((t%3600)/60)).padStart(2,'0');
+        const s = String(t%60).padStart(2,'0');
+        const el = document.getElementById('countdown');
+        if (el) el.textContent = `expires in ${h}:${m}:${s}`;
+      }, 1000);
+    }
+
+    // ─── 2x2 grid composer (BFL multi-garment spec) ───
+    async function composeGarmentCanvas(urls) {
+      const loadImg = src => new Promise((res, rej) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => res(img);
+        img.onerror = rej;
+        img.src = `/api/proxy?url=${encodeURIComponent(src)}`;
+      });
+      const imgs = await Promise.all(urls.slice(0,4).map(loadImg));
+      const tw = 512, th = 680;
+      const canvas = document.createElement('canvas');
+      canvas.width = tw*2; canvas.height = th*2;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+      const fit = (img, x, y) => {
+        const r = Math.min(tw/img.width, th/img.height) * 0.9;
+        const w = img.width*r, h = img.height*r;
+        ctx.drawImage(img, x + (tw-w)/2, y + (th-h)/2, w, h);
+      };
+      const slots = [[0,0],[tw,0],[0,th],[tw,th]];
+      imgs.forEach((img, i) => fit(img, slots[i][0], slots[i][1]));
+      return canvas.toDataURL('image/jpeg', 0.9);
+    }
+
+    async function addPairing() {
+      const { base, partner } = window._pairingState || {};
+      if (!base || !partner) return;
+
+      document.getElementById('garmentSlot').innerHTML = `
+        <div style="display:flex;gap:2px;width:100%;height:100%;">
+          <img src="${base.img}" style="width:50%;height:100%;object-fit:cover;">
+          <img src="${partner.img}" style="width:50%;height:100%;object-fit:cover;">
+        </div>`;
+      document.getElementById('resultSlot').innerHTML = `<div class="spinner"></div><div>Composing both…</div>`;
+      const status = document.getElementById('vtoStatus');
+      status.textContent = `composing ${base.name} + ${partner.name}…`;
+
+      try {
+        const composite = await composeGarmentCanvas([base.img, partner.img]);
+        const prompt = `The person of image 1, maintaining exactly their face and pose, wearing the ${base.desc} and the ${partner.desc} of image 2.`;
+        const r = await fetch('/api/vto', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ person_url: currentModelUrl, garment_b64: composite, prompt }),
+        });
+        const { job_id } = await r.json();
+        const d = await pollJob(job_id, i => status.textContent = `composing… ${i*2}s`);
+        if (d.ok) {
+          document.getElementById('resultSlot').innerHTML = `<img src="${d.local_path}" alt="full look">`;
+          status.innerHTML = `<span style="color:var(--accent)">✓ full look — <strong>${base.name}</strong> + <strong>${partner.name}</strong></span>`;
+          document.getElementById('bundleBanner').style.display = 'block';
+          startCountdown();
+        } else {
+          status.innerHTML = `<span style="color:#FF5555">compose failed: ${d.detail?.status || d.error || d.status}</span>`;
+        }
+      } catch (e) {
+        status.innerHTML = `<span style="color:#FF5555">compose error: ${e.message}</span>`;
+      }
+    }
+
+    // ─── Boot ───
+    renderPresets();
+    renderProducts();
+    selectPreset(0);
+  </script>
+</body>
+</html>
