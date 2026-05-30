@@ -841,9 +841,8 @@
     const RAW = 'https://raw.githubusercontent.com/DealExMachina/dexm-virtual-tryon/main/results';
 
     // BFL VTO proxy — every fitting goes through this URL.
-    // After Koyeb deploy, paste the URL here (and re-push), or set it once via:
-    //   localStorage.setItem('dexm.proxyUrl', 'https://YOUR-PROXY.koyeb.app');
-    const DEFAULT_PROXY = '';
+    // Visitors can override via: localStorage.setItem('dexm.proxyUrl', 'https://OTHER.koyeb.app');
+    const DEFAULT_PROXY = 'https://exuberant-octavia-dealexmachina-a8182cc0.koyeb.app';
     const PROXY = localStorage.getItem('dexm.proxyUrl') || DEFAULT_PROXY;
 
     function isProxyConfigured() { return PROXY && PROXY.startsWith('http'); }
