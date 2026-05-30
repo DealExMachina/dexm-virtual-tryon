@@ -742,7 +742,7 @@
     <p>Begin with a likeness. Select a piece from the edit. The atelier renders the fit in moments — woven with Black Forest Labs' FLUX.</p>
     <div style="margin-top:32px; display:inline-flex; align-items:center; gap:10px; padding:10px 18px; border:1px solid var(--line); background:var(--card); font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--ink-mid);">
       <span style="width:5px;height:5px;background:var(--accent);border-radius:50%;"></span>
-      A maison preview &middot; fittings pre-rendered with FLUX VTO
+      A live maison preview &middot; each fitting rendered with FLUX VTO
     </div>
   </section>
 
@@ -840,6 +840,14 @@
     // Assets served from the repo's raw GitHub URLs — this file deploys to any static host.
     const RAW = 'https://raw.githubusercontent.com/DealExMachina/dexm-virtual-tryon/main/results';
 
+    // BFL VTO proxy — every fitting goes through this URL.
+    // After Koyeb deploy, paste the URL here (and re-push), or set it once via:
+    //   localStorage.setItem('dexm.proxyUrl', 'https://YOUR-PROXY.koyeb.app');
+    const DEFAULT_PROXY = '';
+    const PROXY = localStorage.getItem('dexm.proxyUrl') || DEFAULT_PROXY;
+
+    function isProxyConfigured() { return PROXY && PROXY.startsWith('http'); }
+
     const products = [
       { name: "Echo Tee",       price: 65,  category: "shirts",  slug: "tee_geo",      img: `${RAW}/garment_tee_geo.jpg` },
       { name: "Onyx Camp",      price: 120, category: "shirts",  slug: "shirt_black",  img: `${RAW}/garment_shirt_black.jpg` },
@@ -890,15 +898,16 @@
 
     const findProduct = name => products.find(p => p.name === name);
 
-    // ─── Preset models — only Aldric has pre-rendered fittings in this static demo ───
+    // ─── Preset models — each has a slug used to resolve pre-rendered fittings ───
     const presetModels = [
-      { name: "Aldric",       tag: "Fifties / Stocky",     img: `${RAW}/preset_viking.jpg`,      live: true },
-      { name: "Riviera",      tag: "Thirties / Lean",      img: `${RAW}/preset_slender_med.jpg`, live: false },
-      { name: "Solène",       tag: "Forties / Considered", img: `${RAW}/preset_afro_rasta.jpg`,  live: false },
-      { name: "Mr. Vaillant", tag: "Seventies / Elder",    img: `${RAW}/preset_old_man.jpg`,     live: false },
-      { name: "Théo",         tag: "Forties / Refined",    img: `${RAW}/preset_medium_age.jpg`,  live: false },
-      { name: "Étienne",      tag: "Twenties / Lithe",     img: `${RAW}/preset_young.jpg`,       live: false },
+      { slug: "viking",   name: "Aldric",       tag: "Fifties / Stocky",     img: `${RAW}/preset_viking.jpg` },
+      { slug: "riviera",  name: "Riviera",      tag: "Thirties / Lean",      img: `${RAW}/preset_slender_med.jpg` },
+      { slug: "locs",     name: "Solène",       tag: "Forties / Considered", img: `${RAW}/preset_afro_rasta.jpg` },
+      { slug: "vaillant", name: "Mr. Vaillant", tag: "Seventies / Elder",    img: `${RAW}/preset_old_man.jpg` },
+      { slug: "theo",     name: "Théo",         tag: "Forties / Refined",    img: `${RAW}/preset_medium_age.jpg` },
+      { slug: "etienne",  name: "Étienne",      tag: "Twenties / Lithe",     img: `${RAW}/preset_young.jpg` },
     ];
+    let currentPresetSlug = presetModels[0].slug;
 
     let currentModelUrl = null;
     let selectedGarmentIdx = null;
@@ -906,7 +915,7 @@
     function renderPresets() {
       const wrap = document.getElementById('presetModels');
       wrap.innerHTML = presetModels.map((m, i) => `
-        <div class="preset-card${m.live ? '' : ' disabled'}" ${m.live ? `onclick="selectPreset(${i})"` : ''} data-idx="${i}">
+        <div class="preset-card" onclick="selectPreset(${i})" data-idx="${i}">
           <div class="img"><img src="${m.img}" alt="${m.name}" onerror="this.style.display='none'"></div>
           <div class="meta">
             <div class="name">${m.name}</div>
@@ -916,13 +925,18 @@
     }
     function selectPreset(idx) {
       const m = presetModels[idx];
-      if (!m.live) return;
       currentModelUrl = m.img;
+      currentPresetSlug = m.slug;
       document.querySelectorAll('.preset-card').forEach((el, i) => {
         el.classList.toggle('selected', i === idx);
       });
-      const thumb = document.getElementById('personThumb');
-      thumb.innerHTML = `<img src="${m.img}" alt="${m.name}">`;
+      document.getElementById('personThumb').innerHTML = `<img src="${m.img}" alt="${m.name}">`;
+      // Reset the fitting frame when the model changes
+      document.getElementById('resultSlot').innerHTML = `<div class="result-icon">&#10038;</div><div>Select a piece to begin</div>`;
+      document.getElementById('resultBadge')?.classList.remove('on');
+      document.getElementById('garmentSlot').innerHTML = `<div style="font-family:var(--serif); font-style:italic; color:var(--ink-dim); font-size:22px;">&#10038;</div>`;
+      document.getElementById('vtoStatus').innerHTML = '';
+      document.getElementById('pairingPanel')?.remove();
     }
 
     function renderProducts(filter = 'all') {
@@ -956,9 +970,28 @@
       status.innerHTML = '<span style="color:var(--accent)">— By appointment. Please write to the atelier.</span>';
     }
 
-    // ─── Single garment fitting (pre-rendered for Aldric) ───
+    // ─── Polling helper ───
+    async function pollJob(jobId, onProgress) {
+      for (let i = 0; i < 240; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        try {
+          const r = await fetch(`${PROXY}/api/job?id=${jobId}`);
+          const d = await r.json();
+          if (d.status === 'ready') return d;
+          if (d.status === 'failed') return d;
+        } catch (e) { continue; }
+        if (onProgress) onProgress(i);
+      }
+      return { status: 'timeout' };
+    }
+
+    // ─── Single garment fitting via the live proxy ───
     async function tryGarment(idx) {
       const p = products[idx];
+      if (!isProxyConfigured()) {
+        showProxySetup();
+        return;
+      }
       document.getElementById('garmentSlot').innerHTML = `<img src="${p.img}" alt="${p.name}">`;
       document.getElementById('resultSlot').innerHTML = `<div class="spinner"></div><div>Draping the ${p.name}…</div>`;
       document.getElementById('resultBadge').classList.add('on');
@@ -966,21 +999,30 @@
       status.textContent = `Preparing the fitting…`;
       document.getElementById('pairingPanel')?.remove();
 
-      // Authentic FLUX VTO latency, simulated
-      await new Promise(r => setTimeout(r, 1800 + Math.random() * 1200));
-
-      const url = `${RAW}/tryon_viking_${p.slug}.jpg`;
-      const img = new Image();
-      img.onload = () => {
-        document.getElementById('resultSlot').innerHTML = `<img src="${url}" alt="${p.name}" class="fade-in">`;
-        status.innerHTML = `<span style="color:var(--accent)">A fitting of the <strong>${p.name}</strong>.</span>`;
-        showPairing(p, url);
-      };
-      img.onerror = () => {
-        document.getElementById('resultSlot').innerHTML = `<div class="result-icon">&#10038;</div><div>Not yet rendered in this atelier.</div>`;
-        status.innerHTML = `<span style="color:#C26A4D">This fitting is reserved for the live atelier.</span>`;
-      };
-      img.src = url;
+      try {
+        const r = await fetch(`${PROXY}/api/vto`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            person_url: currentModelUrl,
+            garment_url: p.img,
+            prompt: `The person of image 1, maintaining exactly their face and pose, wearing the ${p.desc} of image 2.`,
+          }),
+        });
+        const { job_id, error } = await r.json();
+        if (!job_id) throw new Error(error || `proxy returned ${r.status}`);
+        const d = await pollJob(job_id, i => status.textContent = `The atelier is rendering — ${i*2}s`);
+        if (d.ok) {
+          document.getElementById('resultSlot').innerHTML = `<img src="${d.image_url}" alt="${p.name}" class="fade-in" crossorigin="anonymous">`;
+          status.innerHTML = `<span style="color:var(--accent)">A fitting of the <strong>${p.name}</strong>.</span>`;
+          showPairing(p, d.image_url);
+        } else {
+          document.getElementById('resultSlot').innerHTML = `<div class="result-icon">&#10038;</div><div>${d.detail?.status || d.error || d.status}</div>`;
+          status.innerHTML = `<span style="color:#C26A4D">The fitting could not be completed.</span>`;
+        }
+      } catch (e) {
+        document.getElementById('resultSlot').innerHTML = `<div class="result-icon">&#10038;</div><div>The atelier is unreachable.</div>`;
+        status.innerHTML = `<span style="color:#C26A4D">${e.message}</span>`;
+      }
     }
 
     // ─── Pairing panel ───
@@ -1040,10 +1082,37 @@
       }, 1000);
     }
 
-    // ─── Combined fitting (pre-rendered for Aldric × known pairs) ───
+    // ─── 2x2 grid composer per BFL multi-garment spec ───
+    async function composeGarmentCanvas(urls) {
+      const loadImg = src => new Promise((res, rej) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => res(img);
+        img.onerror = () => rej(new Error(`failed to load ${src}`));
+        img.src = src;
+      });
+      const imgs = await Promise.all(urls.slice(0, 4).map(loadImg));
+      const tw = 512, th = 680;
+      const canvas = document.createElement('canvas');
+      canvas.width = tw * 2; canvas.height = th * 2;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const fit = (img, x, y) => {
+        const r = Math.min(tw / img.width, th / img.height) * 0.9;
+        const w = img.width * r, h = img.height * r;
+        ctx.drawImage(img, x + (tw - w) / 2, y + (th - h) / 2, w, h);
+      };
+      const slots = [[0, 0], [tw, 0], [0, th], [tw, th]];
+      imgs.forEach((img, i) => fit(img, slots[i][0], slots[i][1]));
+      return canvas.toDataURL('image/jpeg', 0.9);
+    }
+
+    // ─── Combined fitting via the proxy ───
     async function addPairing() {
       const { base, partner } = window._pairingState || {};
       if (!base || !partner) return;
+      if (!isProxyConfigured()) { showProxySetup(); return; }
 
       document.getElementById('garmentSlot').innerHTML = `
         <div style="display:flex;gap:2px;width:100%;height:100%;">
@@ -1054,28 +1123,52 @@
       const status = document.getElementById('vtoStatus');
       status.textContent = `The atelier is composing the pair…`;
 
-      await new Promise(r => setTimeout(r, 2400 + Math.random() * 1000));
-
-      // Combos are filed shirt-first, jacket-second on disk
-      const shirt = base.category === 'shirts' ? base : partner;
-      const jacket = base.category === 'jackets' ? base : partner;
-      const url = `${RAW}/combo_viking_${shirt.slug}_${jacket.slug}.jpg`;
-
-      const img = new Image();
-      img.onload = () => {
-        document.getElementById('resultSlot').innerHTML = `<img src="${url}" alt="complete look" class="fade-in">`;
-        status.innerHTML = `<span style="color:var(--accent)">A complete look — <strong>${base.name}</strong> with <strong>${partner.name}</strong>.</span>`;
-        document.getElementById('bundleBanner').style.display = 'block';
-        startCountdown();
-      };
-      img.onerror = () => {
-        document.getElementById('resultSlot').innerHTML = `<div class="result-icon">&#10038;</div><div>This composition is reserved for the live atelier.</div>`;
-        status.innerHTML = `<span style="color:#C26A4D">Combo not yet pre-rendered.</span>`;
-      };
-      img.src = url;
+      try {
+        const composite = await composeGarmentCanvas([base.img, partner.img]);
+        const prompt = `The person of image 1, maintaining exactly their face and pose, wearing the ${base.desc} and the ${partner.desc} of image 2.`;
+        const r = await fetch(`${PROXY}/api/vto`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ person_url: currentModelUrl, garment_b64: composite, prompt }),
+        });
+        const { job_id, error } = await r.json();
+        if (!job_id) throw new Error(error || `proxy returned ${r.status}`);
+        const d = await pollJob(job_id, i => status.textContent = `Composing — ${i*2}s`);
+        if (d.ok) {
+          document.getElementById('resultSlot').innerHTML = `<img src="${d.image_url}" alt="complete look" class="fade-in" crossorigin="anonymous">`;
+          status.innerHTML = `<span style="color:var(--accent)">A complete look — <strong>${base.name}</strong> with <strong>${partner.name}</strong>.</span>`;
+          document.getElementById('bundleBanner').style.display = 'block';
+          startCountdown();
+        } else {
+          status.innerHTML = `<span style="color:#C26A4D">The composition could not be completed.</span>`;
+        }
+      } catch (e) {
+        status.innerHTML = `<span style="color:#C26A4D">${e.message}</span>`;
+      }
     }
 
-    /* @keyframes for fade-in already declared in main CSS */
+    // ─── Configure-atelier UI shown when no proxy URL is set ───
+    function showProxySetup() {
+      const status = document.getElementById('vtoStatus');
+      status.innerHTML = `
+        <div style="text-align:left; padding:18px; background:var(--card); border:1px solid var(--accent); border-radius:6px;">
+          <div style="font-family:var(--serif); font-size:20px; font-weight:400; margin-bottom:8px;">The atelier needs a connection.</div>
+          <div style="font-size:13px; color:var(--ink-mid); line-height:1.6; margin-bottom:12px;">
+            This maison preview calls a small live service to render each fitting with FLUX VTO.
+            Paste your atelier URL below — it is stored only in your browser.
+          </div>
+          <div style="display:flex; gap:8px;">
+            <input id="proxyUrlInput" type="text" placeholder="https://your-proxy.koyeb.app"
+              style="flex:1; padding:10px 12px; background:var(--bg-alt); border:1px solid var(--line); border-radius:4px; color:var(--ink); font-family:var(--sans); font-size:12px;">
+            <button class="btn" onclick="saveProxyUrl()">Connect</button>
+          </div>
+        </div>`;
+    }
+    function saveProxyUrl() {
+      const v = document.getElementById('proxyUrlInput').value.trim().replace(/\/$/, '');
+      if (!v.startsWith('http')) return;
+      localStorage.setItem('dexm.proxyUrl', v);
+      location.reload();
+    }
 
     // ─── Boot ───
     renderPresets();
