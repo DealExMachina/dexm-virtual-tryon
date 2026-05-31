@@ -1,51 +1,92 @@
-# DEXM — Virtual Try-On
+# dexm — The Virtual Atelier
 
-An interactive virtual try-on demo built on Black Forest Labs' [FLUX VTO](https://bfl.ai/blog).
+An interactive virtual try-on experience built on **Black Forest Labs [FLUX VTO](https://bfl.ai)**.
 
-Pick a model, click any garment, see the result in seconds. Pair a top with an outer layer in a single multi-garment composition call.
+Pick a likeness, select a piece from the edit, and see yourself in the cloth — rendered in seconds.
 
-![DEXM](https://img.shields.io/badge/FLUX-VTO-CCFF00?style=flat-square)
-![Node](https://img.shields.io/badge/node-26+-black?style=flat-square)
+**[Try the demo →](https://dealexmachina.github.io/dexm-virtual-tryon/)**
+
+## Architecture
+
+Two deployments from one repo:
+
+```
+docs/index.html   →  GitHub Pages   (static UI, no secrets)
+proxy/server.js   →  Koyeb          (BFL API proxy, holds BFL_API_KEY)
+```
+
+The browser never sees the API key or BFL signed URLs. The proxy owns the full pipeline: submit → poll → download → convert (WebP) → serve.
+
+| Layer | URL |
+|-------|-----|
+| **Demo UI** | [dealexmachina.github.io/dexm-virtual-tryon/](https://dealexmachina.github.io/dexm-virtual-tryon/) |
+| **API proxy** | `https://exuberant-octavia-dealexmachina-a8182cc0.koyeb.app` |
 
 ## What it does
 
-- **6 preset models** spanning ages, body types, and ethnicities — every shopper, every body
-- **12 fictional garments** (6 tops + 6 outer layers), each generated as a clean packshot
-- **Step 1**: pick a model (or generate a custom one from a prompt)
-- **Step 2**: click any garment — instant try-on, no modal, no scroll-back
-- **Step 3**: see the result inline, with a stylist's pairing suggestion + bundle CTA
+- **6 preset models** — diverse ages, builds, and styles
+- **12 fictional garments** — tops and outer layers as clean packshots
+- **Single-garment fitting** — one click, ~8 seconds
+- **Multi-garment outfits** — shirt + jacket composed server-side at BFL's 0.35 MP spec
+- **WebP delivery** — ~50% smaller than JPEG, negotiated via `Accept` header
 
 ## Features
 
-- **Single-garment VTO** via `/v1/flux-tools/vto-v1`
-- **Multi-garment composition** — 2x2 canvas grid + enumerative prompt format per BFL's recommended spec
-- **Async polling** so generations never time out in the browser
-- **Image proxy** for cross-origin canvas operations
-- **24h booking promo** with a live countdown banner
+- RESTful proxy routes (`/fittings`, `/outfits`, `/jobs/:id`, `/images/:id`)
+- Server-side image composition with Sharp (no brittle browser canvas)
+- CORS allowlist for GitHub Pages origins
+- Stylist pairing suggestions with bundle CTA
 
-## Setup
+## Local development
+
+**Static UI only** (needs a running proxy):
 
 ```bash
-# Get an API key from https://docs.bfl.ml
-echo 'BFL_API_KEY=your-key-here' > .env
-
-npm start
-# → http://localhost:8091
+# Serve docs/ on any static server, e.g.:
+python3 -m http.server 8092 --directory docs
 ```
 
-Requires Node 26+ (native `fetch` and `--env-file`).
+**Full stack** (proxy + BFL key):
 
-## API endpoints (server.js)
+```bash
+cd proxy
+echo 'BFL_API_KEY=your-key' > ../.env
+npm install
+npm start
+# → http://localhost:8080
+```
 
-- `POST /api/generate` — submit a model generation, returns `job_id`
-- `POST /api/vto` — submit a try-on (single or multi-garment), returns `job_id`
-- `GET  /api/job?id=...` — poll a job status; returns `{ status, image_url, local_path }`
-- `GET  /api/proxy?url=...` — same-origin image proxy for browser canvas
+Set the proxy URL in the demo: `localStorage.setItem('dexm.proxyUrl', 'http://localhost:8080')` then reload.
 
-## Notes
+## Proxy API
 
-All models and garments in this demo are AI-generated for demonstration purposes. No real brand, product, or person is depicted.
+| Method | Path | Body | Returns |
+|--------|------|------|---------|
+| POST | `/models` | `{ prompt, width?, height? }` | `{ job_id }` |
+| POST | `/fittings` | `{ person_url, garment_url, prompt }` | `{ job_id }` |
+| POST | `/outfits` | `{ person_url, garment_urls: […], prompt }` | `{ job_id }` |
+| GET | `/jobs/:id` | — | `{ status, image_url?, error? }` |
+| GET | `/images/:id` | — | WebP or JPEG (by `Accept`) |
+| GET | `/healthz` | — | `{ ok: true }` |
+
+Poll `/jobs/:id` until `status === "ready"`, then load `PROXY + image_url`.
+
+See [proxy/README.md](proxy/README.md) for Koyeb deployment.
+
+## Credits
+
+**Rendering engine:** [Black Forest Labs](https://bfl.ai) — FLUX Klein (`flux-2-klein-9b`) for likeness generation, FLUX VTO (`flux-tools/vto-v1`) for garment fitting. Enormous thanks to the BFL team for shipping a dedicated VTO endpoint, clear multi-garment composition guidance, and an API that made this maison preview possible in a weekend.
+
+**Hosting:** GitHub Pages (static) + [Koyeb](https://koyeb.com) (proxy).
+
+All models and garments in this demo are AI-generated fictions. No real brand, product, or person is depicted.
+
+## For AI coding agents
+
+- Do **not** read image files under `results/` — JPEGs explode LLM context when decoded as vision tokens.
+- Do **not** log or inspect full base64 VTO payloads (one request ≈ 100k+ tokens of opaque text).
+- Use `.cursorignore` patterns: `results/`, `*.jpg`, `*.webp`.
 
 ---
 
-Built with [FLUX](https://bfl.ai) · MIT
+MIT · an edition of 2026

@@ -1,49 +1,50 @@
 # dexm · BFL VTO Proxy
 
-A tiny, zero-dependency Node 20+ proxy that lets a browser-only static demo
-call [BFL FLUX VTO](https://docs.bfl.ml/) without exposing the API key and
-without hitting the browser CORS wall.
+A small Node 20+ service that lets a browser-only static demo call [BFL FLUX VTO](https://docs.bfl.ai/) without exposing the API key or hitting CORS limits.
 
-Routes:
+The proxy owns the full pipeline: submit → poll BFL → download → convert to WebP → serve from `/images/:id`.
 
-- `POST /api/vto` — submit a virtual try-on, returns `{ ok, job_id }`
-- `POST /api/generate` — submit a text-to-image (model generation)
-- `GET  /api/job?id=…` — poll a job, returns `{ status, image_url }`
-- `GET  /healthz` — liveness check
+## Routes
 
-## Deploy to Koyeb
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/models` | Generate a person from a text prompt |
+| POST | `/fittings` | Single-garment virtual try-on |
+| POST | `/outfits` | Multi-garment VTO (2×2 composite, server-side) |
+| GET | `/jobs/:id` | Poll async job → `{ status, image_url }` |
+| GET | `/images/:id` | Serve result (WebP if `Accept: image/webp`, else JPEG) |
+| GET | `/healthz` | Liveness probe |
 
-1. Push this repo to GitHub (it's already pushed under
-   `DealExMachina/dexm-virtual-tryon`).
-2. In Koyeb, **Create Service → GitHub** → pick `dexm-virtual-tryon`.
-3. **Service type:** Web Service.
-4. **Builder:** Buildpack (or Dockerfile if you prefer).
-5. **Run command:** `npm start --prefix proxy`
-   (or set the **Work directory** to `/proxy` and use `npm start`).
-6. **Environment variables:**
-   - `BFL_API_KEY` = your BFL key (required)
-   - `ALLOWED_ORIGINS` = comma-separated allowlist; defaults to
-     `https://dealexmachina.github.io,https://jeanbapt.github.io,http://localhost:8091`
-   - `PORT` is provided by Koyeb automatically.
-7. Deploy. You'll get a URL like `https://dexm-proxy-XXX.koyeb.app/`.
+## Deploy to Koyeb (GitHub pull)
 
-Once live, copy the URL and set it on the static demo:
+1. **Create Service → GitHub** → `DealExMachina/dexm-virtual-tryon`
+2. **Work directory:** `proxy`
+3. **Run command:** `npm start`
+4. **Environment:**
+   - `BFL_API_KEY` — required
+   - `ALLOWED_ORIGINS` — defaults to `dealexmachina.github.io`, `jeanbapt.github.io`, localhost
+5. **Port:** 8000 (Koyeb sets `PORT` automatically)
 
-```js
-// In the browser console on https://dealexmachina.github.io/dexm-virtual-tryon/
-localStorage.setItem('dexm.proxyUrl', 'https://dexm-proxy-XXX.koyeb.app');
-location.reload();
-```
+Requires `package-lock.json` in `proxy/` for the Heroku Node buildpack (Sharp dependency).
 
-Or hardcode it by editing `docs/index.html`'s `DEFAULT_PROXY` constant
-and pushing — the demo will then work for everyone with no setup.
+Once live, set `DEFAULT_PROXY` in `docs/index.html` or push the Koyeb URL so GitHub Pages visitors connect automatically.
 
 ## Run locally
 
 ```bash
 cd proxy
+npm install
 BFL_API_KEY=bfl_… npm start
-# proxy listens on :8080
+# → http://localhost:8080
 ```
 
-Then on the demo, set `localStorage.setItem('dexm.proxyUrl', 'http://localhost:8080')`.
+## Tests
+
+```bash
+npm test              # unit tests (no API key)
+npm run test:e2e      # live BFL calls (needs BFL_API_KEY)
+```
+
+---
+
+Part of [dexm-virtual-tryon](../README.md) · powered by [Black Forest Labs](https://bfl.ai)
