@@ -1,9 +1,7 @@
 .env
 .claude/
 results/*
-# Keep preset models, garment packshots, and pre-generated try-on results
+# Static demo assets only — live fittings come from the Koyeb proxy
 !results/preset_*.jpg
 !results/garment_*.jpg
-!results/tryon_*.jpg
-!results/combo_*.jpg
 proxy/node_modules/

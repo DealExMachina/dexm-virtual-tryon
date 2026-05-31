@@ -1,5 +1,7 @@
 # dexm — The Virtual Atelier
 
+![dexm Virtual Atelier — composed outfit with bundle CTA](docs/assets/social-preview.jpg)
+
 An interactive virtual try-on experience built on **Black Forest Labs [FLUX VTO](https://bfl.ai)**.
 
 Pick a likeness, select a piece from the edit, and see yourself in the cloth — rendered in seconds.
@@ -16,6 +18,16 @@ proxy/server.js   →  Koyeb          (BFL API proxy, holds BFL_API_KEY)
 ```
 
 The browser never sees the API key or BFL signed URLs. The proxy owns the full pipeline: submit → poll → download → convert (WebP) → serve.
+
+## Why the proxy runs on Koyeb
+
+GitHub Pages only serves static files — no Node, no secrets, no server-side image processing. The demo UI must still call BFL, which creates three hard requirements:
+
+1. **Hide the API key** — `BFL_API_KEY` cannot live in client-side JavaScript shipped to every visitor.
+2. **Bypass CORS** — BFL's API does not accept browser `fetch()` from `*.github.io` origins.
+3. **Own the pipeline** — download BFL results server-side, convert to WebP with Sharp, serve stable `/images/:id` URLs instead of leaking expiring signed links.
+
+Koyeb fits this role with minimal ceremony: connect the GitHub repo, set `workdir: proxy`, inject `BFL_API_KEY` as a secret, auto-deploy on push. The free tier is enough for a demo; the UI stays on Pages where it belongs.
 
 | Layer | URL |
 |-------|-----|
@@ -72,6 +84,16 @@ Set the proxy URL in the demo: `localStorage.setItem('dexm.proxyUrl', 'http://lo
 Poll `/jobs/:id` until `status === "ready"`, then load `PROXY + image_url`.
 
 See [proxy/README.md](proxy/README.md) for Koyeb deployment.
+
+## Social preview asset
+
+The repo hero image (`docs/assets/social-preview.jpg`) is a 1200×630 app snapshot — composed outfit plus bundle CTA — generated from [docs/assets/social-preview.html](docs/assets/social-preview.html) (uses `outfit-sample.jpg` as the fitting photo). Re-render after UI changes:
+
+```bash
+# requires playwright (one-off)
+npx playwright screenshot file://$(pwd)/docs/assets/social-preview.html \
+  docs/assets/social-preview.jpg --viewport-size=1200,630
+```
 
 ## Credits
 
