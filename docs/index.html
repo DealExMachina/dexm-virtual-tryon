@@ -974,7 +974,7 @@
       for (let i = 0; i < 240; i++) {
         await new Promise(r => setTimeout(r, 2000));
         try {
-          const r = await fetch(`${PROXY}/api/job?id=${jobId}`);
+          const r = await fetch(`${PROXY}/jobs/${jobId}`, { headers: { 'Accept': 'application/json' } });
           const d = await r.json();
           if (d.status === 'ready') return d;
           if (d.status === 'failed') return d;
@@ -999,7 +999,7 @@
       document.getElementById('pairingPanel')?.remove();
 
       try {
-        const r = await fetch(`${PROXY}/api/vto`, {
+        const r = await fetch(`${PROXY}/fittings`, {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             person_url: currentModelUrl,
@@ -1011,7 +1011,7 @@
         if (!job_id) throw new Error(error || `proxy returned ${r.status}`);
         const d = await pollJob(job_id, i => status.textContent = `The atelier is rendering — ${i*2}s`);
         if (d.ok) {
-          const imgSrc = PROXY + d.image_path;
+          const imgSrc = PROXY + d.image_url;
           document.getElementById('resultSlot').innerHTML = `<img src="${imgSrc}" alt="${p.name}" class="fade-in">`;
           status.innerHTML = `<span style="color:var(--accent)">A fitting of the <strong>${p.name}</strong>.</span>`;
           showPairing(p, imgSrc);
@@ -1102,7 +1102,7 @@
 
       try {
         const prompt = `The person of image 1, maintaining exactly their face and pose, wearing the ${base.desc} and the ${partner.desc} of image 2.`;
-        const r = await fetch(`${PROXY}/api/outfit-vto`, {
+        const r = await fetch(`${PROXY}/outfits`, {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             person_url: currentModelUrl,
@@ -1114,7 +1114,7 @@
         if (!job_id) throw new Error(error || `proxy returned ${r.status}`);
         const d = await pollJob(job_id, i => status.textContent = `Composing — ${i*2}s`);
         if (d.ok) {
-          const comboSrc = PROXY + d.image_path;
+          const comboSrc = PROXY + d.image_url;
           document.getElementById('resultSlot').innerHTML = `<img src="${comboSrc}" alt="complete look" class="fade-in">`;
           status.innerHTML = `<span style="color:var(--accent)">A complete look — <strong>${base.name}</strong> with <strong>${partner.name}</strong>.</span>`;
           document.getElementById('bundleBanner').style.display = 'block';
