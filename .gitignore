@@ -6,3 +6,4 @@ results/*
 !results/garment_*.jpg
 !results/tryon_*.jpg
 !results/combo_*.jpg
+proxy/node_modules/

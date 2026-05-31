@@ -1,21 +1,26 @@
 // BFL VTO proxy — minimal Node server with CORS for the dexm static demo.
 //
-// KEY DESIGN PRINCIPLE:
-// The proxy never returns BFL's signed delivery URLs to the browser.
-// It downloads the image itself and serves it from its own origin at
-// GET /api/image/:jobId — so the browser always loads a same-origin image.
-// This avoids:
-//   - Cross-origin image loading issues (Safari privacy mode, etc.)
-//   - BFL signed URL expiry (10-minute TTL)
-//   - crossorigin attribute / CORS confusion on <img> tags
+// KEY DESIGN PRINCIPLES:
+// 1. Never return BFL signed delivery URLs to the browser.
+//    The proxy downloads images and serves them from its own origin so
+//    the browser always loads same-origin images (no CORS, no expiry,
+//    works on Safari).
+//
+// 2. All image composition happens server-side.
+//    Browser canvas is unreliable: cross-origin taint in Safari,
+//    and easy to exceed BFL's 1 MP garment image limit.
+//    /api/outfit-vto does server-side 2×2 grid at exactly ~0.5 MP
+//    per BFL's multi-garment spec.
 //
 // Routes:
-//   POST /api/generate         → submit text-to-image, returns { ok, job_id }
-//   POST /api/vto              → submit virtual try-on,  returns { ok, job_id }
-//   GET  /api/job?id=…         → poll status,  returns { status, image_path? }
-//   GET  /api/image/:jobId     → serve the image bytes (same-origin)
+//   POST /api/generate         → text-to-image,      returns { ok, job_id }
+//   POST /api/vto              → single garment VTO,  returns { ok, job_id }
+//   POST /api/outfit-vto       → multi-garment VTO,   returns { ok, job_id }
+//   GET  /api/job?id=…         → poll status,         returns { status, image_path? }
+//   GET  /api/image/:jobId     → serve image bytes    (same-origin)
 //   GET  /healthz              → 200 OK
 import { createServer } from "node:http";
+import sharp from "sharp";
 
 const BFL_API = "https://api.bfl.ai/v1";
 const PORT = process.env.PORT || 8080;
@@ -152,6 +157,85 @@ async function handleGenerate(req, res, origin) {
   jsonResponse(res, origin, { ok: true, job_id: jobId });
 }
 
+// Build a 2×2 grid composite from multiple garment URLs.
+// Target: ~0.5 MP total (BFL spec: "~0.5 MP, 1 MP max").
+// Each tile: 256×340 px → total: 512×680 = 0.35 MP (safe margin).
+async function buildGarmentComposite(garmentUrls) {
+  const TILE_W = 256, TILE_H = 340;
+  const COLS = 2, ROWS = 2;
+
+  // Download all garments (up to 4)
+  const urls = garmentUrls.slice(0, 4);
+  const buffers = await Promise.all(urls.map(async url => {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`failed to fetch garment ${url}: ${r.status}`);
+    return Buffer.from(await r.arrayBuffer());
+  }));
+
+  // Resize each garment to fit within tile, preserve aspect ratio, white bg
+  const tiles = await Promise.all(buffers.map(buf =>
+    sharp(buf)
+      .resize(TILE_W, TILE_H, { fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 1 } })
+      .jpeg({ quality: 90 })
+      .toBuffer()
+  ));
+
+  // Build 2×2 canvas (white background, tiles placed top-left through their slot)
+  const canvas = sharp({
+    create: {
+      width: TILE_W * COLS,
+      height: TILE_H * ROWS,
+      channels: 3,
+      background: { r: 255, g: 255, b: 255 },
+    },
+  });
+
+  const composites = tiles.map((tile, i) => ({
+    input: tile,
+    left: (i % COLS) * TILE_W,
+    top: Math.floor(i / COLS) * TILE_H,
+  }));
+
+  return canvas.composite(composites).jpeg({ quality: 90 }).toBuffer();
+}
+
+async function handleOutfitVto(req, res, origin) {
+  // Accepts: { person_url, garment_urls: [url1, url2, …], prompt }
+  // Composes the garments server-side into a 2×2 grid at ~0.5 MP,
+  // then submits a single VTO call to BFL.
+  const body = await readBody(req);
+  const { garment_urls, prompt } = body;
+  const person = stripDataPrefix(body.person_b64 || body.person_url);
+
+  if (!person || !garment_urls?.length) {
+    jsonResponse(res, origin, { ok: false, error: "person and garment_urls[] are required" }, 400);
+    return;
+  }
+
+  console.log(`[outfit-vto] person=${Math.round(person.length / 1024)}KB garments=${garment_urls.length}`);
+  const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  jobs.set(jobId, { status: "pending", created: Date.now() });
+
+  // Respond immediately — composition + BFL call happens in the background
+  jsonResponse(res, origin, { ok: true, job_id: jobId });
+
+  try {
+    const compositeBuf = await buildGarmentComposite(garment_urls);
+    const garmentB64 = compositeBuf.toString("base64");
+    console.log(`[${jobId}] composite built: ${compositeBuf.length}B (${Math.round(compositeBuf.length / 1024)}KB)`);
+    await runJob(jobId, "flux-tools/vto-v1", {
+      person: stripDataPrefix(person),
+      garment: garmentB64,
+      prompt: prompt?.trim() ||
+        "The person of image 1, maintaining exactly their face and pose, wearing the garments of image 2.",
+      output_format: "jpeg",
+    });
+  } catch (e) {
+    console.error(`[${jobId}] outfit-vto error:`, e.message);
+    jobs.set(jobId, { ...jobs.get(jobId), status: "failed", error: e.message });
+  }
+}
+
 async function handleVto(req, res, origin) {
   const body = await readBody(req);
   const person = stripDataPrefix(body.person_b64 || body.person_url);
@@ -222,9 +306,10 @@ const server = createServer(async (req, res) => {
   }
 
   try {
-    if (req.method === "POST" && req.url === "/api/generate") return await handleGenerate(req, res, origin);
-    if (req.method === "POST" && req.url === "/api/vto")      return await handleVto(req, res, origin);
-    if (req.method === "GET"  && req.url.startsWith("/api/job"))   return handleJobStatus(req, res, origin);
+    if (req.method === "POST" && req.url === "/api/generate")    return await handleGenerate(req, res, origin);
+    if (req.method === "POST" && req.url === "/api/vto")         return await handleVto(req, res, origin);
+    if (req.method === "POST" && req.url === "/api/outfit-vto")  return await handleOutfitVto(req, res, origin);
+    if (req.method === "GET"  && req.url.startsWith("/api/job"))    return handleJobStatus(req, res, origin);
     if (req.method === "GET"  && req.url.startsWith("/api/image/")) return handleImageServe(req, res, origin);
   } catch (e) {
     console.error("handler error:", e);

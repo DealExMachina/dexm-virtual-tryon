@@ -1082,33 +1082,10 @@
       }, 1000);
     }
 
-    // ─── 2x2 grid composer per BFL multi-garment spec ───
-    async function composeGarmentCanvas(urls) {
-      const loadImg = src => new Promise((res, rej) => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => res(img);
-        img.onerror = () => rej(new Error(`failed to load ${src}`));
-        img.src = src;
-      });
-      const imgs = await Promise.all(urls.slice(0, 4).map(loadImg));
-      const tw = 512, th = 680;
-      const canvas = document.createElement('canvas');
-      canvas.width = tw * 2; canvas.height = th * 2;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      const fit = (img, x, y) => {
-        const r = Math.min(tw / img.width, th / img.height) * 0.9;
-        const w = img.width * r, h = img.height * r;
-        ctx.drawImage(img, x + (tw - w) / 2, y + (th - h) / 2, w, h);
-      };
-      const slots = [[0, 0], [tw, 0], [0, th], [tw, th]];
-      imgs.forEach((img, i) => fit(img, slots[i][0], slots[i][1]));
-      return canvas.toDataURL('image/jpeg', 0.9);
-    }
-
-    // ─── Combined fitting via the proxy ───
+    // ─── Combined fitting via the proxy (server-side composition) ───
+    // The browser sends garment URLs. The proxy downloads them, builds a
+    // 2×2 grid at ~0.35 MP (well within BFL's 0.5 MP target / 1 MP max),
+    // and submits a single VTO call — no browser-side canvas needed.
     async function addPairing() {
       const { base, partner } = window._pairingState || {};
       if (!base || !partner) return;
@@ -1124,11 +1101,14 @@
       status.textContent = `The atelier is composing the pair…`;
 
       try {
-        const composite = await composeGarmentCanvas([base.img, partner.img]);
         const prompt = `The person of image 1, maintaining exactly their face and pose, wearing the ${base.desc} and the ${partner.desc} of image 2.`;
-        const r = await fetch(`${PROXY}/api/vto`, {
+        const r = await fetch(`${PROXY}/api/outfit-vto`, {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ person_url: currentModelUrl, garment_b64: composite, prompt }),
+          body: JSON.stringify({
+            person_url: currentModelUrl,
+            garment_urls: [base.img, partner.img],
+            prompt,
+          }),
         });
         const { job_id, error } = await r.json();
         if (!job_id) throw new Error(error || `proxy returned ${r.status}`);

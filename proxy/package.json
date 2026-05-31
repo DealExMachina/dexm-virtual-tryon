@@ -6,6 +6,9 @@
   "engines": {
     "node": ">=20"
   },
+  "dependencies": {
+    "sharp": "^0.33.4"
+  },
   "scripts": {
     "start": "node server.js"
   }
