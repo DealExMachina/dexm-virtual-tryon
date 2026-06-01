@@ -17,6 +17,7 @@
  *   POST  /models            Generate a person image from a text prompt
  *   POST  /fittings          Single-garment virtual try-on
  *   POST  /outfits           Multi-garment VTO (2–4 pieces, 2×2 grid composite)
+ *   POST  /accessories       Bag/accessory on person via FLUX.2 multi-reference
  *   POST  /animations        Runway image-to-video sequence (4 Viking editorial clips)
  *   GET   /jobs/:id          Poll async job status (image or animation)
  *   GET   /images/:id        Serve the rendered image (WebP or JPEG)
@@ -45,6 +46,13 @@ import {
   resolveAnimationSequence, buildOutfitRevealSequence,
   estimateSequenceCost, withCarbonEstimate, fetchRunwayOrganization,
 } from "./lib/runway.js";
+import {
+  buildAccessoryPrompt,
+  buildBackViewReframePrompt,
+  DEFAULT_ACCESSORY_MODEL,
+  CARRY_STYLES,
+} from "./lib/accessories.js";
+import { withScene, SCENE_IDS } from "./lib/scenes.js";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -62,6 +70,7 @@ if (!GEN3) console.warn("WARNING: GEN3_API_KEY / RUNWAYML_API_SECRET not set —
 // BFL model identifiers
 const MODEL_GENERATE = "flux-2-klein-9b";   // fast, cheap — good enough for demo models
 const MODEL_VTO      = "flux-tools/vto-v1"; // dedicated VTO endpoint
+const MODEL_ACCESSORY = process.env.BFL_ACCESSORY_MODEL || DEFAULT_ACCESSORY_MODEL;
 
 // Job TTL
 const JOB_TTL_MS = 3_600_000; // 1 hour
@@ -118,34 +127,96 @@ async function bflPoll(pollingUrl, maxMs = 300_000) {
 
 // ─── Job runner ───────────────────────────────────────────────────────────────
 
+async function flux2Generate(endpoint, payload) {
+  const sub = await bflSubmit(endpoint, payload);
+  const result = await bflPoll(sub.polling_url);
+  if (result.status !== "Ready") throw new Error(`BFL ${result.status}`);
+  return fetch(result.result.sample).then(r => r.arrayBuffer()).then(Buffer.from);
+}
+
+async function storeImageJob(jobId, rawBuf) {
+  const webpBuf = await toWebP(rawBuf);
+  const jpegBuf = await toJpeg(rawBuf);
+  jobs.set(jobId, {
+    ...jobs.get(jobId),
+    status: "ready",
+    webp: webpBuf,
+    jpeg: jpegBuf,
+  });
+  console.log(`[${jobId}] ✓ ready (webp ${webpBuf.length}B, jpeg ${jpegBuf.length}B)`);
+}
+
 async function runJob(jobId, endpoint, payload) {
   try {
     const sub = await bflSubmit(endpoint, payload);
     console.log(`[${jobId}] submitted → BFL ${sub.id}`);
-
     const result = await bflPoll(sub.polling_url);
     if (result.status !== "Ready") {
       jobs.set(jobId, { ...jobs.get(jobId), status: "failed", error: result.status });
       console.log(`[${jobId}] ✗ ${result.status}`);
       return;
     }
-
-    // Download and convert to WebP — never hand BFL's signed URL to the browser
     const rawBuf = await fetch(result.result.sample).then(r => r.arrayBuffer()).then(Buffer.from);
-    const webpBuf  = await toWebP(rawBuf);
-    const jpegBuf  = await toJpeg(rawBuf);
-
-    jobs.set(jobId, {
-      ...jobs.get(jobId),
-      status: "ready",
-      webp: webpBuf,
-      jpeg: jpegBuf,
-    });
-    console.log(`[${jobId}] ✓ ready (webp ${webpBuf.length}B, jpeg ${jpegBuf.length}B)`);
+    await storeImageJob(jobId, rawBuf);
   } catch (e) {
     console.error(`[${jobId}] error:`, e.message);
     jobs.set(jobId, { ...jobs.get(jobId), status: "failed", error: e.message });
   }
+}
+
+/** Backpacks: reframe person to back view, then place bag (single FLUX call often puts bag on chest). */
+function runAccessoryJob(jobId, {
+  personB64,
+  accessoryB64,
+  carryStyle,
+  scene,
+  prompt,
+  accessoryDesc,
+  width,
+  height,
+  safety_tolerance,
+  reframeBack,
+}) {
+  (async () => {
+    try {
+      let personInput = personB64;
+      const w = width || 832;
+      const h = height || 1216;
+      const safety = safety_tolerance ?? 2;
+      const basePayload = { width: w, height: h, safety_tolerance: safety, output_format: "jpeg" };
+
+      if (carryStyle === "backpack" && reframeBack !== false) {
+        jobs.set(jobId, { ...jobs.get(jobId), step: "reframe_back" });
+        console.log(`[accessories/${jobId}] step 1/2 reframe → back view`);
+        const reframeBuf = await flux2Generate(MODEL_ACCESSORY, {
+          ...basePayload,
+          prompt: buildBackViewReframePrompt(scene),
+          input_image: personInput,
+        });
+        personInput = reframeBuf.toString("base64");
+      }
+
+      jobs.set(jobId, { ...jobs.get(jobId), step: "place_accessory" });
+      const stepNum = carryStyle === "backpack" && reframeBack !== false ? "2/2" : "1/1";
+      console.log(`[accessories/${jobId}] step ${stepNum} place accessory`);
+      const placePrompt = prompt || buildAccessoryPrompt({
+        accessory_desc: accessoryDesc,
+        carry_style: carryStyle,
+        scene,
+      });
+
+      const rawBuf = await flux2Generate(MODEL_ACCESSORY, {
+        ...basePayload,
+        prompt: placePrompt,
+        input_image: personInput,
+        input_image_2: accessoryB64,
+      });
+      await storeImageJob(jobId, rawBuf);
+    } catch (e) {
+      console.error(`[accessories/${jobId}] error:`, e.message);
+      jobs.set(jobId, { ...jobs.get(jobId), status: "failed", error: e.message });
+    }
+  })();
 }
 
 // ─── Route handlers ───────────────────────────────────────────────────────────
@@ -181,8 +252,11 @@ async function handleFittings(body) {
   runJob(jobId, MODEL_VTO, {
     person:  personB64,
     garment: garmentB64,
-    prompt:  body.prompt ||
-      "The person of image 1, maintaining exactly their face and pose, wearing the garment of image 2.",
+    prompt:  withScene(
+      body.prompt ||
+        "The person of image 1, maintaining exactly their face and pose, wearing the garment of image 2.",
+      body.scene,
+    ),
     output_format: "jpeg",
   });
   return { job_id: jobId };
@@ -207,10 +281,83 @@ async function handleOutfits(body) {
   runJob(jobId, MODEL_VTO, {
     person:  personB64,
     garment: compositeB64,
-    prompt:  body.prompt,
+    prompt:  withScene(body.prompt, body.scene),
     output_format: "jpeg",
   });
   return { job_id: jobId };
+}
+
+// POST /accessories
+// Body: { person_url | person_b64 | person_job_id, accessory_url | accessory_b64,
+//         carry_style?, accessory_desc?, prompt?, width?, height? }
+// → FLUX.2 multi-reference: person + bag/accessory product shot
+async function handleAccessories(body) {
+  let personSrc = body.person_b64 || body.person_url;
+  if (body.person_job_id) {
+    const src = jobs.get(body.person_job_id);
+    if (!src?.jpeg) throw new ClientError("person_job_id not found or not ready", 404);
+    personSrc = `data:image/jpeg;base64,${src.jpeg.toString("base64")}`;
+  }
+  if (!personSrc) throw new ClientError('"person_url", "person_b64", or "person_job_id" is required', 400);
+
+  const accessorySrc = body.accessory_b64 || body.accessory_url;
+  if (!accessorySrc) throw new ClientError('"accessory_url" or "accessory_b64" is required', 400);
+
+  const carryStyle = body.carry_style || "backpack";
+  if (!CARRY_STYLES.includes(carryStyle)) {
+    throw new ClientError(`carry_style must be one of: ${CARRY_STYLES.join(", ")}`, 400);
+  }
+
+  const [personB64, accessoryB64] = await Promise.all([
+    toBase64ForBFL(personSrc),
+    toBase64ForBFL(accessorySrc),
+  ]);
+
+  const scene = body.scene || "urban";
+  if (body.scene && !SCENE_IDS.includes(body.scene)) {
+    throw new ClientError(`scene must be one of: ${SCENE_IDS.join(", ")}`, 400);
+  }
+
+  const prompt = body.prompt || buildAccessoryPrompt({
+    accessory_desc: body.accessory_desc,
+    carry_style: carryStyle,
+    scene,
+  });
+
+  const jobId = newJobId();
+  jobs.set(jobId, {
+    status: "pending",
+    type: "accessory",
+    carry_style: carryStyle,
+    created: Date.now(),
+  });
+
+  const reframeBack = body.reframe_back !== false;
+  console.log(
+    `[accessories/${jobId}] ${MODEL_ACCESSORY} carry=${carryStyle}` +
+    (carryStyle === "backpack" && reframeBack ? " (2-step back view)" : "")
+  );
+
+  runAccessoryJob(jobId, {
+    personB64,
+    accessoryB64,
+    carryStyle,
+    scene,
+    prompt,
+    accessoryDesc: body.accessory_desc,
+    width: body.width,
+    height: body.height,
+    safety_tolerance: body.safety_tolerance,
+    reframeBack,
+  });
+
+  return {
+    job_id: jobId,
+    model: MODEL_ACCESSORY,
+    carry_style: carryStyle,
+    scene,
+    reframe_back: carryStyle === "backpack" && reframeBack,
+  };
 }
 
 // POST /animations
@@ -442,6 +589,7 @@ const ROUTES = [
   ["POST", "/models",      async (b) => handleModels(b)],
   ["POST", "/fittings",    async (b) => handleFittings(b)],
   ["POST", "/outfits",     async (b) => handleOutfits(b)],
+  ["POST", "/accessories", async (b) => handleAccessories(b)],
   ["POST", "/animations",  async (b) => handleAnimations(b)],
   ["GET",  "/jobs/:id",    async (_, p) => handleJobStatus(p.id)],
   // /images/:id is handled separately (binary response)
@@ -517,7 +665,7 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`\n  dexm VTO proxy → http://localhost:${PORT}`);
-  console.log(`  routes: POST /models  POST /fittings  POST /outfits  POST /animations`);
+  console.log(`  routes: POST /models  POST /fittings  POST /outfits  POST /accessories  POST /animations`);
   console.log(`          GET  /jobs/:id  GET /images/:id  GET /videos/:id  GET /runway/balance`);
   console.log(`  runway: ${GEN3 ? `${RUNWAY_MODEL} enabled` : "disabled (set GEN3_API_KEY)"}`);
   console.log(`  origins: ${ALLOWED_ORIGINS.join(", ")}\n`);
