@@ -242,34 +242,119 @@
       font-weight: 400;
     }
 
-    details summary {
-      cursor: pointer;
-      font-family: var(--sans);
-      font-size: 12px;
+    .custom-likeness {
+      margin-top: 8px;
+      padding: 28px 32px 32px;
+      background: var(--card);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      box-shadow: 0 0 0 1px rgba(201, 165, 114, 0.12),
+                  0 20px 48px -24px rgba(201, 165, 114, 0.18);
+    }
+    .custom-likeness.active {
+      box-shadow: 0 0 0 1px var(--accent),
+                  0 24px 56px -20px rgba(201, 165, 114, 0.28);
+    }
+    .custom-likeness-head { margin-bottom: 22px; }
+    .custom-likeness-badge {
+      display: inline-block;
+      font-size: 10px;
       letter-spacing: 2px;
       text-transform: uppercase;
-      color: var(--ink-mid);
-      padding: 20px;
-      text-align: center;
-      list-style: none;
-      font-weight: 400;
-      transition: color 0.3s ease;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      padding: 3px 10px;
+      margin-bottom: 14px;
     }
-    details summary:hover { color: var(--accent); }
-    details textarea {
+    .custom-likeness-title {
+      font-family: var(--serif);
+      font-size: 28px;
+      font-weight: 400;
+      letter-spacing: 0.3px;
+      margin-bottom: 10px;
+    }
+    .custom-likeness-lead {
+      font-size: 14px;
+      color: var(--ink-mid);
+      line-height: 1.65;
+      max-width: 52em;
+    }
+    .custom-likeness-label {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: var(--ink-mid);
+      margin-bottom: 10px;
+    }
+    #modelPrompt {
       width: 100%;
+      min-height: 108px;
       padding: 14px 16px;
-      background: var(--card);
+      background: var(--bg-alt);
       border: 1px solid var(--line);
       border-radius: 4px;
-      font-family: 'JetBrains Mono', monospace;
+      font-family: var(--mono);
       font-size: 13px;
+      line-height: 1.55;
       color: var(--ink);
       resize: vertical;
       box-sizing: border-box;
-      margin-top: 12px;
     }
-    details textarea:focus { outline: none; border-color: var(--accent); }
+    #modelPrompt::placeholder { color: var(--ink-dim); }
+    #modelPrompt:focus { outline: none; border-color: var(--accent); }
+    .custom-likeness-tips {
+      margin: 16px 0 0;
+      padding-left: 18px;
+      font-size: 13px;
+      color: var(--ink-mid);
+      line-height: 1.65;
+    }
+    .custom-likeness-tips li { margin-bottom: 6px; }
+    .custom-likeness-tips li:last-child { margin-bottom: 0; }
+    .custom-likeness-policy {
+      margin-top: 14px;
+      padding: 12px 14px;
+      background: var(--bg-alt);
+      border-left: 2px solid var(--line);
+      font-size: 12px;
+      color: var(--ink-dim);
+      line-height: 1.6;
+    }
+    .custom-likeness-examples {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .custom-likeness-examples-label {
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+      margin-right: 4px;
+    }
+    .prompt-chip {
+      font-family: var(--sans);
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      padding: 8px 14px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--bg);
+      color: var(--ink-mid);
+      cursor: pointer;
+      transition: border-color 0.25s ease, color 0.25s ease;
+    }
+    .prompt-chip:hover {
+      border-color: var(--accent-soft);
+      color: var(--accent);
+    }
+    .custom-likeness-actions {
+      text-align: center;
+      margin-top: 22px;
+    }
 
     /* WORK GRID — catalog + result */
     .work {
@@ -801,14 +886,35 @@
 
     <div class="preset-grid" id="presetModels"></div>
 
-    <details>
-      <summary>— Compose a custom likeness</summary>
-      <textarea id="modelPrompt" rows="3">A considered editorial portrait of a person in their 30s wearing a plain white crew-neck t-shirt, neutral linen backdrop, soft natural light from the left, relaxed pose, shot from waist up</textarea>
-      <div style="text-align:center; margin-top:14px;">
-        <button class="btn" id="generateModelBtn" onclick="generateCustomModel()">Render the likeness</button>
+    <div class="custom-likeness" id="customLikeness">
+      <div class="custom-likeness-head">
+        <span class="custom-likeness-badge">Your own likeness</span>
+        <h3 class="custom-likeness-title">Compose a custom model</h3>
+        <p class="custom-likeness-lead">
+          Prefer someone not in the edit? Describe a single person in plain language — the atelier renders a new likeness with FLUX, then holds their face through every fitting.
+        </p>
+      </div>
+      <label class="custom-likeness-label" for="modelPrompt">Describe the person</label>
+      <textarea id="modelPrompt" rows="4" placeholder="e.g. Editorial waist-up portrait of a woman in her forties, warm smile, olive linen shirt, soft window light, neutral backdrop"></textarea>
+      <ul class="custom-likeness-tips">
+        <li>One person only — age, build, expression, and a <strong>plain top</strong> (crew-neck or simple shirt) work best for try-on.</li>
+        <li>Frame the shot <strong>waist-up</strong> or chest-up; keep the background simple and uncluttered.</li>
+        <li>Be specific about light and mood — e.g. &ldquo;soft natural light from the left&rdquo;, &ldquo;relaxed editorial pose&rdquo;.</li>
+      </ul>
+      <p class="custom-likeness-policy">
+        <strong>House policy:</strong> offensive, violent, sexual, hateful, or otherwise inappropriate prompts are not permitted and may be declined by the atelier&rsquo;s safety filters.
+      </p>
+      <div class="custom-likeness-examples">
+        <span class="custom-likeness-examples-label">Examples</span>
+        <button type="button" class="prompt-chip" onclick="fillModelPromptExample(0)">Thirties · editorial</button>
+        <button type="button" class="prompt-chip" onclick="fillModelPromptExample(1)">Forties · considered</button>
+        <button type="button" class="prompt-chip" onclick="fillModelPromptExample(2)">Twenties · lithe</button>
+      </div>
+      <div class="custom-likeness-actions">
+        <button class="btn btn-dark" id="generateModelBtn" onclick="generateCustomModel()">Render the likeness</button>
         <div id="modelStatus" class="status"></div>
       </div>
-    </details>
+    </div>
   </section>
 
   <!-- STEP 02 + 03 — work area -->
@@ -965,7 +1071,7 @@
     const presetModels = [
       { slug: "viking",   name: "Aldric",       tag: "Fifties / Stocky",     img: `${RAW}/preset_viking.jpg` },
       { slug: "riviera",  name: "Riviera",      tag: "Thirties / Lean",      img: `${RAW}/preset_slender_med.jpg` },
-      { slug: "locs",     name: "Solène",       tag: "Forties / Considered", img: `${RAW}/preset_afro_rasta.jpg` },
+      { slug: "locs",     name: "Damian",       tag: "Forties / Considered", img: `${RAW}/preset_afro_rasta.jpg` },
       { slug: "vaillant", name: "Mr. Vaillant", tag: "Seventies / Elder",    img: `${RAW}/preset_old_man.jpg` },
       { slug: "theo",     name: "Théo",         tag: "Forties / Refined",    img: `${RAW}/preset_medium_age.jpg` },
       { slug: "etienne",  name: "Étienne",      tag: "Twenties / Lithe",     img: `${RAW}/preset_young.jpg` },
@@ -986,6 +1092,20 @@
           </div>
         </div>`).join('');
     }
+    const MODEL_PROMPT_EXAMPLES = [
+      'A considered editorial portrait of a person in their 30s wearing a plain white crew-neck t-shirt, neutral linen backdrop, soft natural light from the left, relaxed pose, shot from waist up',
+      'Editorial portrait of a person in their forties, calm confident expression, cream oxford shirt, neutral studio backdrop, soft diffused light, waist-up framing',
+      'Editorial portrait of a person in their twenties, lean build, heather grey ribbed polo, minimal grey backdrop, bright even light, relaxed shoulders, waist up',
+    ];
+
+    function fillModelPromptExample(i) {
+      const ta = document.getElementById('modelPrompt');
+      if (!ta || MODEL_PROMPT_EXAMPLES[i] == null) return;
+      ta.value = MODEL_PROMPT_EXAMPLES[i];
+      ta.focus();
+      document.getElementById('customLikeness')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
     function selectPreset(idx) {
       const m = presetModels[idx];
       currentModelUrl = m.img;
@@ -993,6 +1113,7 @@
       document.querySelectorAll('.preset-card').forEach((el, i) => {
         el.classList.toggle('selected', i === idx);
       });
+      document.getElementById('customLikeness')?.classList.toggle('active', m.slug === 'custom');
       document.getElementById('personThumb').innerHTML = `<img src="${m.img}" alt="${m.name}">`;
       // Reset the fitting frame when the model changes
       document.getElementById('resultSlot').innerHTML = `<div class="result-icon">&#10038;</div><div>Select a piece to begin</div>`;
@@ -1031,10 +1152,55 @@
       renderProducts(cat);
     }
 
-    // ─── Custom model generation is by appointment in this static atelier ───
-    function generateCustomModel() {
+    // ─── Custom likeness via POST /models ───
+    async function generateCustomModel() {
+      const btn = document.getElementById('generateModelBtn');
       const status = document.getElementById('modelStatus');
-      status.innerHTML = '<span style="color:var(--accent)">— By appointment. Please write to the atelier.</span>';
+      const promptText = document.getElementById('modelPrompt')?.value.trim();
+      if (!isProxyConfigured()) {
+        showProxySetup();
+        return;
+      }
+      if (!promptText) {
+        status.innerHTML = '<span style="color:#C26A4D">Please describe your likeness before rendering.</span>';
+        document.getElementById('modelPrompt')?.focus();
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Rendering the likeness…';
+      status.textContent = 'The atelier is composing your likeness…';
+      try {
+        const r = await fetch(`${PROXY}/models`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: promptText, width: 832, height: 1216 }),
+        });
+        const { job_id } = await parseProxyJSON(r);
+        const d = await pollJob(job_id, i => status.textContent = `Rendering your likeness — ${i * 2}s`);
+        if (isJobReady(d)) {
+          const imgSrc = PROXY + d.image_url;
+          const entry = { slug: 'custom', name: 'Your likeness', tag: 'Custom prompt', img: imgSrc };
+          const idx = presetModels.findIndex(m => m.slug === 'custom');
+          if (idx >= 0) presetModels[idx] = entry;
+          else presetModels.unshift(entry);
+          renderPresets();
+          selectPreset(presetModels.findIndex(m => m.slug === 'custom'));
+          status.innerHTML = '<span style="color:var(--accent)">Your likeness is ready — select a piece below.</span>';
+          btn.textContent = 'Render another likeness';
+          document.getElementById('step1')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+          const err = jobErrorMessage(d);
+          const moderated = /moderat/i.test(String(err));
+          status.innerHTML = moderated
+            ? '<span style="color:#C26A4D">This prompt could not be rendered. Please revise it — offensive or inappropriate content is not permitted.</span>'
+            : `<span style="color:#C26A4D">The likeness could not be rendered: ${err}</span>`;
+          btn.textContent = 'Try again';
+        }
+      } catch (e) {
+        status.innerHTML = `<span style="color:#C26A4D">${e.message}</span>`;
+        btn.textContent = 'Try again';
+      }
+      btn.disabled = false;
     }
 
     // Proxy job shape: { status: "pending"|"ready"|"failed", image_url?, error? }
