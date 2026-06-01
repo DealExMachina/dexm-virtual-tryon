@@ -1,49 +1,148 @@
-# dexm · BFL VTO Proxy
+# dexm · BFL VTO + Runway Proxy
 
-A tiny, zero-dependency Node 20+ proxy that lets a browser-only static demo
-call [BFL FLUX VTO](https://docs.bfl.ml/) without exposing the API key and
-without hitting the browser CORS wall.
+A zero-framework Node 20+ proxy that lets a browser-only static demo call
+[BFL FLUX VTO](https://docs.bfl.ml/) and [Runway image-to-video](https://docs.dev.runwayml.com/)
+without exposing API keys or hitting CORS.
 
-Routes:
+**Requires ffmpeg** on the host for animation frame extraction and clip stitching.
 
-- `POST /api/vto` — submit a virtual try-on, returns `{ ok, job_id }`
-- `POST /api/generate` — submit a text-to-image (model generation)
-- `GET  /api/job?id=…` — poll a job, returns `{ status, image_url }`
-- `GET  /healthz` — liveness check
+## Routes
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| `POST` | `/models` | Generate a person image from a text prompt |
+| `POST` | `/fittings` | Single-garment virtual try-on |
+| `POST` | `/outfits` | Multi-garment VTO (2–4 pieces) |
+| `POST` | `/animations` | Viking mood sequence → stitched MP4 |
+| `GET` | `/jobs/:id` | Poll a job (image or animation) |
+| `GET` | `/images/:id` | Serve rendered image (WebP or JPEG) |
+| `GET` | `/videos/:id` | Stitched animation MP4 |
+| `GET` | `/runway/balance` | Runway dev portal credit balance |
+| `GET` | `/healthz` | Liveness check |
+
+## Animations (`POST /animations`)
+
+Generates a **sequential, chained** expression sequence. Each clip uses the last frame of the previous clip as `promptImage`, so moods actually change (parallel jobs with the same photo produce near-identical motion-only output).
+
+### Default sequence (mode: `sequence`)
+
+| Clip | Duration | Mood |
+|------|----------|------|
+| `neutral` | 5s | Subtle motion, closed lips |
+| `smile` | 5s | Warm smile forming |
+| `grin` | 5s | Broad toothy grin |
+| `serious` | 5s | Expression drops to cold stare |
+
+Clips are stitched with ffmpeg into one MP4 served at `GET /videos/:id`.
+
+### Request body
+
+```json
+{
+  "image_url": "https://…/photo.jpg",
+  "image_job_id": "job_…",
+  "mode": "sequence",
+  "clips": ["neutral", "smile"],
+  "stitch": true
+}
+```
+
+- `image_url` — absolute URL, or `data:image/jpeg;base64,…` data URI
+- `image_job_id` — use JPEG from a completed `/fittings` job (no public URL needed)
+- `mode` — `"sequence"` (default, 4×5s chained) or `"arc"` (1×10s continuous)
+- `clips` — optional subset for cheap tests, e.g. `["neutral", "smile"]`
+- `prompt` + `duration` — custom single clip instead of the Viking sequence
+
+### Response
+
+```json
+{ "job_id": "job_…", "cost": { "estimated_credits": 120, "estimated_usd": 1.2, … } }
+```
+
+Poll `GET /jobs/:id` until `status` is `ready` or `failed`. On success, `video_url` is `/videos/:id` and `clips[]` lists each segment with Runway CDN URLs.
+
+### Runway API fields (reference)
+
+Aligned with [Runway dev API](https://docs.dev.runwayml.com/guides/using-the-api/):
+
+- Endpoint: `POST /v1/image_to_video`
+- Header: `X-Runway-Version: 2024-11-06`
+- Body: `promptImage`, `promptText`, `model`, `ratio`, `duration`
+
+`promptImage` = first frame; `promptText` = motion/action in the clip.
+
+### Models and cost (credits per second)
+
+| Model | Credits/s | Notes |
+|-------|-----------|-------|
+| `gen4.5` | 12 | **Recommended** — best quality in testing |
+| `gen3a_turbo` | 5 | Cheaper; good for prompt/chain validation |
+| `gen4_turbo` | 5 | Alternative |
+
+Full 4-clip sequence: **~240 credits** on `gen4.5` (~$2.40), **~100 credits** on `gen3a_turbo`. Cheap 2-clip test: half that.
 
 ## Deploy to Koyeb
 
-1. Push this repo to GitHub (it's already pushed under
-   `DealExMachina/dexm-virtual-tryon`).
-2. In Koyeb, **Create Service → GitHub** → pick `dexm-virtual-tryon`.
+1. Push this repo to GitHub (`DealExMachina/dexm-virtual-tryon`).
+2. In Koyeb: **Create Service → GitHub** → pick the repo.
 3. **Service type:** Web Service.
-4. **Builder:** Buildpack (or Dockerfile if you prefer).
-5. **Run command:** `npm start --prefix proxy`
-   (or set the **Work directory** to `/proxy` and use `npm start`).
-6. **Environment variables:**
-   - `BFL_API_KEY` = your BFL key (required)
-   - `ALLOWED_ORIGINS` = comma-separated allowlist; defaults to
-     `https://dealexmachina.github.io,https://jeanbapt.github.io,http://localhost:8091`
-   - `PORT` is provided by Koyeb automatically.
-7. Deploy. You'll get a URL like `https://dexm-proxy-XXX.koyeb.app/`.
+4. **Run command:** `npm start --prefix proxy` (or set work directory to `/proxy`).
+5. **Environment variables:**
 
-Once live, copy the URL and set it on the static demo:
+   | Variable | Required | Default / notes |
+   |----------|----------|-----------------|
+   | `BFL_API_KEY` | yes | BFL FLUX VTO |
+   | `GEN3_API_KEY` or `RUNWAYML_API_SECRET` | for `/animations` | Runway API key |
+   | `RUNWAY_MODEL` | no | `gen3a_turbo`; use **`gen4.5`** for production quality |
+   | `RUNWAY_RATIO` | no | `768:1280` (gen3 portrait); **`720:1280`** for gen4.5 portrait |
+   | `RUNWAY_G_CO2_PER_CREDIT` | no | `0.4` — rough carbon proxy, not from Runway |
+   | `PUBLIC_BASE_URL` | no | Proxy public URL; needed for relative `/images/:id` paths |
+   | `ALLOWED_ORIGINS` | no | Comma-separated CORS allowlist |
+   | `PORT` | auto | Provided by Koyeb |
+
+6. Ensure **ffmpeg** is available in the runtime (Koyeb buildpack images include it; verify if using a custom Dockerfile).
+
+Once live, set the demo proxy URL:
 
 ```js
-// In the browser console on https://dealexmachina.github.io/dexm-virtual-tryon/
 localStorage.setItem('dexm.proxyUrl', 'https://dexm-proxy-XXX.koyeb.app');
 location.reload();
 ```
 
-Or hardcode it by editing `docs/index.html`'s `DEFAULT_PROXY` constant
-and pushing — the demo will then work for everyone with no setup.
+Or edit `DEFAULT_PROXY` in `docs/index.html`.
 
 ## Run locally
 
 ```bash
 cd proxy
-BFL_API_KEY=bfl_… npm start
-# proxy listens on :8080
+npm install
+BFL_API_KEY=bfl_… GEN3_API_KEY=… RUNWAY_MODEL=gen4.5 RUNWAY_RATIO=720:1280 npm start
+# → http://localhost:8080
 ```
 
-Then on the demo, set `localStorage.setItem('dexm.proxyUrl', 'http://localhost:8080')`.
+Point the demo: `localStorage.setItem('dexm.proxyUrl', 'http://localhost:8080')`.
+
+### Example: cheap 2-clip test
+
+```bash
+curl -X POST http://localhost:8080/animations \
+  -H "Content-Type: application/json" \
+  -d '{"image_url":"https://raw.githubusercontent.com/DealExMachina/dexm-virtual-tryon/main/results/preset_viking.jpg","clips":["neutral","smile"]}'
+```
+
+### Example: full sequence
+
+```bash
+curl -X POST http://localhost:8080/animations \
+  -H "Content-Type: application/json" \
+  -d '{"image_url":"https://…","mode":"sequence"}'
+```
+
+## Tests
+
+```bash
+npm test              # unit + Runway helpers
+npm run test:e2e      # live BFL/Runway (needs .env)
+```
+
+Logic lives in `lib/runway.js` — prompts, chaining, cost estimates, stitching.

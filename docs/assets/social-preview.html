@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>dexm social preview</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 1200px;
+      height: 630px;
+      overflow: hidden;
+      background: #13110F;
+      color: #F2EBE0;
+      font-family: 'Inter', sans-serif;
+    }
+    .frame {
+      width: 1200px;
+      height: 630px;
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      background:
+        radial-gradient(ellipse 80% 60% at 15% 20%, rgba(201,165,114,0.12), transparent 55%),
+        #13110F;
+      border: 1px solid #2B2620;
+    }
+
+    /* Left — promo copy */
+    .promo {
+      padding: 48px 40px 48px 52px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border-right: 1px solid #2B2620;
+    }
+    .logo {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 42px;
+      font-weight: 300;
+      letter-spacing: 6px;
+      text-transform: lowercase;
+    }
+    .logo span { color: #C9A572; }
+    .eyebrow {
+      font-size: 10px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #C9A572;
+      margin-bottom: 18px;
+    }
+    h1 {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 46px;
+      font-weight: 300;
+      line-height: 1.08;
+      margin-bottom: 16px;
+    }
+    h1 em { font-style: italic; color: #D9BC92; }
+    .sub {
+      font-size: 14px;
+      line-height: 1.65;
+      color: #B5A993;
+      font-weight: 300;
+      max-width: 320px;
+    }
+    .chips {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 28px;
+    }
+    .chip {
+      font-size: 9px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 7px 12px;
+      border: 1px solid #2B2620;
+      border-radius: 4px;
+      color: #7A6F5E;
+    }
+    .chip.live { border-color: #C9A572; color: #C9A572; }
+    .footer-note {
+      font-size: 11px;
+      color: #7A6F5E;
+      letter-spacing: 0.5px;
+    }
+    .footer-note strong { color: #C9A572; font-weight: 500; }
+
+    /* Right — app snapshot */
+    .app {
+      padding: 36px 44px 36px 36px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .step-head {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .step-num {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 32px;
+      color: #C9A572;
+      font-weight: 300;
+    }
+    .step-head h2 {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 28px;
+      font-weight: 300;
+    }
+    .result-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #7A6F5E;
+      margin-bottom: 8px;
+    }
+    .live-dot {
+      color: #C9A572;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .live-dot::before {
+      content: '';
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #C9A572;
+      box-shadow: 0 0 8px rgba(201,165,114,0.6);
+    }
+    .result-img {
+      width: 100%;
+      height: 280px;
+      object-fit: cover;
+      object-position: center top;
+      border-radius: 6px;
+      border: 1px solid #2B2620;
+      display: block;
+    }
+    .pairing {
+      padding: 14px 16px;
+      background: #1A1714;
+      border: 1px solid #2B2620;
+      border-radius: 6px;
+    }
+    .pair-eyebrow {
+      font-size: 9px;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: #C9A572;
+      margin-bottom: 10px;
+    }
+    .pair-row {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }
+    .pair-row img {
+      width: 52px;
+      height: 64px;
+      object-fit: cover;
+      border-radius: 4px;
+    }
+    .pair-info .name {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 20px;
+      font-weight: 400;
+      margin-bottom: 4px;
+    }
+    .pair-info .occasion {
+      font-size: 11px;
+      color: #7A6F5E;
+      line-height: 1.4;
+    }
+    #bundleBanner {
+      margin-top: 14px;
+      padding: 18px 16px;
+      background: linear-gradient(180deg, rgba(201,165,114,0.08) 0%, rgba(201,165,114,0.02) 100%);
+      border: 1px solid #C9A572;
+      border-radius: 6px;
+      text-align: center;
+    }
+    #bundleBanner .urgent {
+      font-size: 9px;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: #C9A572;
+      margin-bottom: 10px;
+    }
+    #bundleBanner .price-line {
+      font-size: 12px;
+      color: #B5A993;
+      line-height: 1.5;
+    }
+    #bundleBanner .price-line strong { color: #F2EBE0; }
+    #bundleBanner .old {
+      text-decoration: line-through;
+      opacity: 0.5;
+    }
+    #bundleBanner .new {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 32px;
+      color: #C9A572;
+      margin-left: 8px;
+    }
+    #countdown {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      color: #7A6F5E;
+      margin: 8px 0 12px;
+    }
+    .btn {
+      display: inline-block;
+      width: 100%;
+      padding: 11px 16px;
+      background: #C9A572;
+      color: #13110F;
+      border: none;
+      border-radius: 4px;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <aside class="promo">
+      <div>
+        <div class="logo">dexm<span>.</span></div>
+        <div style="height: 56px"></div>
+        <div class="eyebrow">The Virtual Atelier</div>
+        <h1>A considered way to see yourself <em>in the pieces.</em></h1>
+        <p class="sub">Pick a likeness. Select from the edit. See the full look rendered with Black Forest Labs FLUX VTO.</p>
+        <div class="chips">
+          <span class="chip live">Live demo</span>
+          <span class="chip">Multi-garment</span>
+          <span class="chip">Open source</span>
+        </div>
+      </div>
+      <p class="footer-note">Powered by <strong>FLUX VTO</strong> · github.com/DealExMachina/dexm-virtual-tryon</p>
+    </aside>
+
+    <main class="app">
+      <div class="step-head">
+        <span class="step-num">03</span>
+        <h2>The fitting.</h2>
+      </div>
+
+      <div>
+        <div class="result-label">
+          <span>The fitting</span>
+          <span class="live-dot">Atelier</span>
+        </div>
+        <img class="result-img" src="outfit-sample.jpg" alt="Composed outfit">
+      </div>
+
+      <div class="pairing">
+        <div class="pair-eyebrow">— A considered pairing</div>
+        <div class="pair-row">
+          <img src="https://raw.githubusercontent.com/DealExMachina/dexm-virtual-tryon/main/results/garment_bomber_black.jpg" alt="Night Bomber">
+          <div class="pair-info">
+            <div class="name">Echo Tee + Night Bomber</div>
+            <div class="occasion">A complete look for considered evenings in the city.</div>
+          </div>
+        </div>
+
+        <div id="bundleBanner">
+          <div class="urgent">— Held for you — 10% on the pair, for the next 24 hours.</div>
+          <div class="price-line">
+            <strong>Echo Tee</strong> · <strong>Night Bomber</strong><br>
+            <span class="old">345 €</span>
+            <span class="new">311 €</span>
+          </div>
+          <div id="countdown">Held for 23:59:42</div>
+          <div class="btn">Reserve the pair · 311 €</div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

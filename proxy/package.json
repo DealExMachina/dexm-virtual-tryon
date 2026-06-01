@@ -1,8 +1,9 @@
 {
   "name": "dexm-vto-proxy",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "private": true,
+  "description": "BFL FLUX VTO + Runway gen4.5 proxy — REST routes, WebP, chained mood animations",
   "engines": {
     "node": ">=20"
   },
@@ -10,6 +11,9 @@
     "sharp": "^0.33.4"
   },
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test:unit": "node --test test/unit.test.js test/runway.test.js",
+    "test:e2e":  "node --test --env-file=../../baziszt-tryon/.env test/e2e.test.js",
+    "test":      "node --test test/unit.test.js test/runway.test.js"
   }
 }

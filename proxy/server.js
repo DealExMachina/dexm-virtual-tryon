@@ -17,39 +17,51 @@
  *   POST  /models            Generate a person image from a text prompt
  *   POST  /fittings          Single-garment virtual try-on
  *   POST  /outfits           Multi-garment VTO (2–4 pieces, 2×2 grid composite)
- *   GET   /jobs/:id          Poll async job status
+ *   POST  /animations        Runway image-to-video sequence (4 Viking editorial clips)
+ *   GET   /jobs/:id          Poll async job status (image or animation)
  *   GET   /images/:id        Serve the rendered image (WebP or JPEG)
- *   GET   /healthz           Liveness probe
+ *   GET   /videos/:id        Stitched mood sequence MP4 (animation jobs)
  *
  * Environment
  *   BFL_API_KEY      required
- *   ALLOWED_ORIGINS  comma-separated list (default: both github.io previews + localhost)
+ *   GEN3_API_KEY or RUNWAYML_API_SECRET  required for POST /animations
+ *   RUNWAY_MODEL     default gen3a_turbo (see docs.dev.runwayml.com/guides/models/)
+ *   RUNWAY_RATIO     default 768:1280 for gen3a_turbo portrait
+ *   RUNWAY_G_CO2_PER_CREDIT  rough gCO2e proxy per credit (default 0.4, not from Runway)
+ *   PUBLIC_BASE_URL  optional — resolves relative /images/:id paths for Runway
  *   PORT             default 8080
  */
 
 import { createServer } from "node:http";
-import sharp from "sharp";
+import {
+  ALLOWED_ORIGINS, TILE_W, TILE_H,
+  resolveImageBytes, toBase64ForBFL,
+  buildComposite, toWebP, toJpeg,
+  corsHeaders,
+} from "./lib/utils.js";
+import {
+  resolvePublicImageUrl, runAnimationJob, jpegToDataUri,
+  DEFAULT_RUNWAY_MODEL, DEFAULT_RUNWAY_RATIO, DEFAULT_ANIMATION_SEQUENCE,
+  resolveAnimationSequence,
+  estimateSequenceCost, withCarbonEstimate, fetchRunwayOrganization,
+} from "./lib/runway.js";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const BFL = "https://api.bfl.ai/v1";
 const PORT = process.env.PORT || 8080;
 const KEY  = process.env.BFL_API_KEY;
+const GEN3 = process.env.GEN3_API_KEY || process.env.RUNWAYML_API_SECRET;
+const PUBLIC_BASE = process.env.PUBLIC_BASE_URL;
+const RUNWAY_MODEL = process.env.RUNWAY_MODEL || DEFAULT_RUNWAY_MODEL;
+const RUNWAY_RATIO = process.env.RUNWAY_RATIO || DEFAULT_RUNWAY_RATIO;
 
 if (!KEY) { console.error("FATAL: BFL_API_KEY is required"); process.exit(1); }
-
-const ALLOWED_ORIGINS = (
-  process.env.ALLOWED_ORIGINS ||
-  "https://dealexmachina.github.io,https://jeanbapt.github.io," +
-  "http://localhost:8091,http://localhost:8092,http://localhost:5500,http://localhost:8000"
-).split(",").map(s => s.trim());
+if (!GEN3) console.warn("WARNING: GEN3_API_KEY / RUNWAYML_API_SECRET not set — POST /animations disabled");
 
 // BFL model identifiers
-const MODEL_GENERATE = "flux-2-klein-9b";       // fast, cheap — good enough for demo models
-const MODEL_VTO      = "flux-tools/vto-v1";     // dedicated VTO endpoint
-
-// Multi-garment composite target: 0.35 MP (BFL: ~0.5 MP, max 1 MP)
-const TILE_W = 256, TILE_H = 340;               // each garment tile: 256×340
+const MODEL_GENERATE = "flux-2-klein-9b";   // fast, cheap — good enough for demo models
+const MODEL_VTO      = "flux-tools/vto-v1"; // dedicated VTO endpoint
 
 // Job TTL
 const JOB_TTL_MS = 3_600_000; // 1 hour
@@ -102,74 +114,7 @@ async function bflPoll(pollingUrl, maxMs = 300_000) {
   return { status: "Timeout" };
 }
 
-// ─── Image processing ─────────────────────────────────────────────────────────
-
-// Convert any BFL JPEG result to WebP (or keep as JPEG fallback).
-async function convertToWebP(buf) {
-  return sharp(buf).webp({ quality: 82 }).toBuffer();
-}
-
-async function convertToJpeg(buf) {
-  return sharp(buf).jpeg({ quality: 88 }).toBuffer();
-}
-
-// Build a 2×2 grid composite from an array of image URLs.
-// Result is always ~0.35 MP: 512×680 (2 columns × 256, 2 rows × 340).
-async function buildComposite(urls) {
-  const cols = 2, rows = 2;
-  const bufs = await Promise.all(
-    urls.slice(0, cols * rows).map(async url => {
-      const src = await resolveImageBytes(url);
-      return sharp(src)
-        .resize(TILE_W, TILE_H, {
-          fit: "contain",
-          background: { r: 255, g: 255, b: 255 },
-        })
-        .jpeg({ quality: 88 })
-        .toBuffer();
-    })
-  );
-
-  return sharp({
-    create: { width: TILE_W * cols, height: TILE_H * rows, channels: 3,
-               background: { r: 255, g: 255, b: 255 } },
-  })
-    .composite(bufs.map((buf, i) => ({
-      input: buf,
-      left: (i % cols) * TILE_W,
-      top:  Math.floor(i / cols) * TILE_H,
-    })))
-    .jpeg({ quality: 88 })
-    .toBuffer();
-}
-
-// Normalise an image source to raw bytes:
-//   - public HTTPS URL → fetch
-//   - data:image/…;base64,<data> → decode base64
-//   - raw base64 string (no prefix) → decode
-async function resolveImageBytes(src) {
-  if (typeof src !== "string") throw new Error("image source must be a string");
-
-  if (src.startsWith("data:")) {
-    const comma = src.indexOf(",");
-    if (comma < 0) throw new Error("malformed data URL");
-    return Buffer.from(src.slice(comma + 1), "base64");
-  }
-
-  if (/^[A-Za-z0-9+/=\r\n]+$/.test(src.slice(0, 64)) && !src.startsWith("http")) {
-    return Buffer.from(src, "base64");
-  }
-
-  const r = await fetch(src);
-  if (!r.ok) throw new Error(`fetch image ${src}: ${r.status}`);
-  return Buffer.from(await r.arrayBuffer());
-}
-
-// Convert resolved image bytes to raw base64 for BFL (no data: prefix).
-async function toBase64ForBFL(src) {
-  const buf = await resolveImageBytes(src);
-  return buf.toString("base64");
-}
+// (image processing imported from lib/utils.js)
 
 // ─── Job runner ───────────────────────────────────────────────────────────────
 
@@ -187,8 +132,8 @@ async function runJob(jobId, endpoint, payload) {
 
     // Download and convert to WebP — never hand BFL's signed URL to the browser
     const rawBuf = await fetch(result.result.sample).then(r => r.arrayBuffer()).then(Buffer.from);
-    const webpBuf  = await convertToWebP(rawBuf);
-    const jpegBuf  = await convertToJpeg(rawBuf);
+    const webpBuf  = await toWebP(rawBuf);
+    const jpegBuf  = await toJpeg(rawBuf);
 
     jobs.set(jobId, {
       ...jobs.get(jobId),
@@ -211,7 +156,7 @@ async function runJob(jobId, endpoint, payload) {
 async function handleModels(body) {
   validate(body, ["prompt"]);
   const jobId = newJobId();
-  jobs.set(jobId, { status: "pending", created: Date.now() });
+  jobs.set(jobId, { status: "pending", type: "image", created: Date.now() });
   runJob(jobId, MODEL_GENERATE, {
     prompt: body.prompt,
     width:  body.width  || 832,
@@ -232,7 +177,7 @@ async function handleFittings(body) {
     toBase64ForBFL(body.garment_b64 || body.garment_url),
   ]);
   const jobId = newJobId();
-  jobs.set(jobId, { status: "pending", created: Date.now() });
+  jobs.set(jobId, { status: "pending", type: "image", created: Date.now() });
   runJob(jobId, MODEL_VTO, {
     person:  personB64,
     garment: garmentB64,
@@ -258,7 +203,7 @@ async function handleOutfits(body) {
   console.log(`[outfits] composite ${body.garment_urls.length} garments → ${compositeBuf.length}B`);
 
   const jobId = newJobId();
-  jobs.set(jobId, { status: "pending", created: Date.now() });
+  jobs.set(jobId, { status: "pending", type: "image", created: Date.now() });
   runJob(jobId, MODEL_VTO, {
     person:  personB64,
     garment: compositeB64,
@@ -268,15 +213,97 @@ async function handleOutfits(body) {
   return { job_id: jobId };
 }
 
+// POST /animations
+// Body: { image_url | image_job_id, mode?, clips? }
+//   mode "sequence" (default) — 4 chained Viking moods → one stitched MP4 (~100 credits)
+//   mode "arc"              — 1×10s continuous arc (~50 credits)
+async function handleAnimations(body) {
+  if (!GEN3) throw new ClientError("GEN3_API_KEY not configured", 503);
+
+  let sequence;
+  try {
+    sequence = resolveAnimationSequence(body);
+  } catch (e) {
+    throw new ClientError(e.message, 400);
+  }
+
+  let imageInput;
+  if (body.image_job_id) {
+    const src = jobs.get(body.image_job_id);
+    if (!src?.jpeg) throw new ClientError("image job not found or not ready", 404);
+    imageInput = jpegToDataUri(src.jpeg);
+  } else if (body.image_url?.startsWith("data:")) {
+    imageInput = body.image_url;
+  } else if (body.image_url) {
+    try {
+      imageInput = resolvePublicImageUrl(body.image_url, PUBLIC_BASE);
+    } catch (e) {
+      throw new ClientError(e.message, 400);
+    }
+  } else {
+    throw new ClientError('"image_url" or "image_job_id" is required', 400);
+  }
+
+  const jobId = newJobId();
+  const cost = withCarbonEstimate(estimateSequenceCost(sequence, RUNWAY_MODEL));
+  jobs.set(jobId, {
+    status: "pending",
+    type: "animation",
+    mode: body.mode === "arc" ? "arc" : "sequence",
+    created: Date.now(),
+    clips: [],
+    cost,
+    model: RUNWAY_MODEL,
+    ratio: RUNWAY_RATIO,
+  });
+  runAnimationJob(jobs, jobId, imageInput, GEN3, sequence, {
+    model: RUNWAY_MODEL,
+    ratio: RUNWAY_RATIO,
+    stitch: body.stitch !== false,
+  });
+  return { job_id: jobId, cost };
+}
+
+// GET /runway/balance — live credit balance from Runway dev portal
+async function handleRunwayBalance() {
+  if (!GEN3) throw new ClientError("GEN3_API_KEY not configured", 503);
+  return fetchRunwayOrganization(GEN3);
+}
+
 // GET /jobs/:id
 function handleJobStatus(jobId) {
   const job = jobs.get(jobId);
   if (!job) throw new ClientError("job not found", 404);
+
+  if (job.type === "animation") {
+    const hasStitch = Boolean(job.stitched_mp4);
+    return {
+      status:         job.status,
+      type:           "animation",
+      mode:           job.mode,
+      model:          job.model,
+      clips:          job.clips,
+      video_urls:     job.status === "ready" ? job.video_urls : undefined,
+      video_url:      job.status === "ready" && hasStitch ? `/videos/${jobId}` : undefined,
+      total_duration: job.total_duration,
+      cost:           job.cost,
+      error:          job.error,
+    };
+  }
+
   return {
-    status:     job.status,
-    image_url:  job.status === "ready" ? `/images/${jobId}` : undefined,
-    error:      job.error,
+    status:    job.status,
+    type:      job.type || "image",
+    image_url: job.status === "ready" ? `/images/${jobId}` : undefined,
+    error:     job.error,
   };
+}
+
+// GET /videos/:id — stitched animation MP4
+function handleVideo(jobId) {
+  const job = jobs.get(jobId);
+  if (!job?.stitched_mp4) throw new ClientError("video not found", 404);
+  return { bytes: job.stitched_mp4, contentType: "video/mp4" };
 }
 
 // GET /images/:id  (content-negotiated: WebP or JPEG)
@@ -289,7 +316,7 @@ function handleImage(jobId, acceptHeader) {
     : { bytes: job.jpeg, contentType: "image/jpeg" };
 }
 
-// ─── HTTP layer ───────────────────────────────────────────────────────────────
+// ─── HTTP layer ──────────────────────────────────────────────────────────────
 
 class ClientError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
@@ -299,17 +326,6 @@ function validate(body, required) {
   for (const f of required) {
     if (!body[f]) throw new ClientError(`"${f}" is required`, 400);
   }
-}
-
-function corsHeaders(origin) {
-  const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
-  return {
-    "Access-Control-Allow-Origin":  allow,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Accept",
-    "Access-Control-Max-Age":       "600",
-    "Vary": "Origin",
-  };
 }
 
 async function readBody(req) {
@@ -349,13 +365,15 @@ function matchRoute(method, url, routes) {
 
 const ROUTES = [
   // Liveness
-  ["GET", "/healthz", async () => ({ ok: true })],
+  ["GET", "/healthz",        async () => ({ ok: true })],
+  ["GET", "/runway/balance", async () => handleRunwayBalance()],
 
   // Resources
-  ["POST", "/models",   async (b) => handleModels(b)],
-  ["POST", "/fittings", async (b) => handleFittings(b)],
-  ["POST", "/outfits",  async (b) => handleOutfits(b)],
-  ["GET",  "/jobs/:id", async (_, p) => handleJobStatus(p.id)],
+  ["POST", "/models",      async (b) => handleModels(b)],
+  ["POST", "/fittings",    async (b) => handleFittings(b)],
+  ["POST", "/outfits",     async (b) => handleOutfits(b)],
+  ["POST", "/animations",  async (b) => handleAnimations(b)],
+  ["GET",  "/jobs/:id",    async (_, p) => handleJobStatus(p.id)],
   // /images/:id is handled separately (binary response)
 ];
 
@@ -367,6 +385,24 @@ const server = createServer(async (req, res) => {
   if (method === "OPTIONS") {
     res.writeHead(204, corsHeaders(origin));
     res.end();
+    return;
+  }
+
+  // Binary video serving (stitched animation)
+  if (method === "GET" && url.startsWith("/videos/")) {
+    const jobId = url.slice("/videos/".length).split("?")[0];
+    try {
+      const { bytes, contentType } = handleVideo(jobId);
+      res.writeHead(200, {
+        "Content-Type":  contentType,
+        "Content-Length": bytes.length,
+        "Cache-Control": "public, max-age=3600",
+        ...corsHeaders(origin),
+      });
+      res.end(bytes);
+    } catch (e) {
+      sendJSON(res, origin, { error: e.message }, e.status ?? 500);
+    }
     return;
   }
 
@@ -411,10 +447,10 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`\n  dexm VTO proxy → http://localhost:${PORT}`);
-  console.log(`  routes: POST /models  POST /fittings  POST /outfits`);
-  console.log(`          GET  /jobs/:id  GET /images/:id`);
+  console.log(`  routes: POST /models  POST /fittings  POST /outfits  POST /animations`);
+  console.log(`          GET  /jobs/:id  GET /images/:id  GET /videos/:id  GET /runway/balance`);
+  console.log(`  runway: ${GEN3 ? `${RUNWAY_MODEL} enabled` : "disabled (set GEN3_API_KEY)"}`);
   console.log(`  origins: ${ALLOWED_ORIGINS.join(", ")}\n`);
 });
 
-// ─── Util ─────────────────────────────────────────────────────────────────────
 const delay = ms => new Promise(r => setTimeout(r, ms));

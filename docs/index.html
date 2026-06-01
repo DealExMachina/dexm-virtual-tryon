@@ -7,7 +7,10 @@
   <meta name="description" content="A considered way to see yourself in the pieces. Pre-rendered with Black Forest Labs FLUX VTO.">
   <meta property="og:title" content="dexm — The Virtual Atelier">
   <meta property="og:description" content="A considered way to see yourself in the pieces. Powered by FLUX VTO.">
-  <meta property="og:image" content="https://raw.githubusercontent.com/DealExMachina/dexm-virtual-tryon/main/results/combo_viking_tee_geo_bomber_black.jpg">
+  <meta property="og:image" content="https://dealexmachina.github.io/dexm-virtual-tryon/assets/social-preview.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:image" content="https://dealexmachina.github.io/dexm-virtual-tryon/assets/social-preview.jpg">
   <meta property="og:url" content="https://dealexmachina.github.io/dexm-virtual-tryon/">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
@@ -747,7 +750,7 @@
   </section>
 
   <!-- STEP 01 — WHO -->
-  <section class="section">
+  <section class="section" id="step1">
     <div class="step-head">
       <span class="step-num">01</span>
       <h2>Begin with you.</h2>
@@ -848,18 +851,18 @@
     function isProxyConfigured() { return PROXY && PROXY.startsWith('http'); }
 
     const products = [
-      { name: "Echo Tee",       price: 65,  category: "shirts",  slug: "tee_geo",      img: `${RAW}/garment_tee_geo.jpg` },
-      { name: "Onyx Camp",      price: 120, category: "shirts",  slug: "shirt_black",  img: `${RAW}/garment_shirt_black.jpg` },
-      { name: "Field Shirt",    price: 95,  category: "shirts",  slug: "shirt_olive",  img: `${RAW}/garment_shirt_olive.jpg` },
-      { name: "Coast Linen",    price: 110, category: "shirts",  slug: "shirt_linen",  img: `${RAW}/garment_shirt_linen.jpg` },
-      { name: "Navy Oxford",    price: 130, category: "shirts",  slug: "shirt_oxford", img: `${RAW}/garment_shirt_oxford.jpg` },
-      { name: "Heather Polo",   price: 85,  category: "shirts",  slug: "polo_grey",    img: `${RAW}/garment_polo_grey.jpg` },
-      { name: "Night Bomber",   price: 280, category: "jackets", slug: "bomber_black", img: `${RAW}/garment_bomber_black.jpg` },
-      { name: "Suede Trucker",  price: 380, category: "jackets", slug: "trucker_tan",  img: `${RAW}/garment_trucker_tan.jpg` },
-      { name: "Utility Field",  price: 240, category: "jackets", slug: "utility_oliv", img: `${RAW}/garment_utility_oliv.jpg` },
-      { name: "Onyx Biker",     price: 420, category: "jackets", slug: "biker_black",  img: `${RAW}/garment_biker_black.jpg` },
-      { name: "Wool Overshirt", price: 295, category: "jackets", slug: "overshirt_cr", img: `${RAW}/garment_overshirt_cr.jpg` },
-      { name: "Varsity",        price: 310, category: "jackets", slug: "varsity_char", img: `${RAW}/garment_varsity_char.jpg` },
+      { name: "Echo Tee",       price: 65,  category: "shirts",  slug: "tee_geo",      img: `${RAW}/garment_tee_geo.jpg`,      desc: "plain white cotton t-shirt with a small black geometric triangle chest print" },
+      { name: "Onyx Camp",      price: 120, category: "shirts",  slug: "shirt_black",  img: `${RAW}/garment_shirt_black.jpg`,  desc: "black oversized short-sleeve camp collar shirt with subtle tonal embroidery" },
+      { name: "Field Shirt",    price: 95,  category: "shirts",  slug: "shirt_olive",  img: `${RAW}/garment_shirt_olive.jpg`,  desc: "olive green workwear shirt with two chest cargo pockets and brass buttons" },
+      { name: "Coast Linen",    price: 110, category: "shirts",  slug: "shirt_linen",  img: `${RAW}/garment_shirt_linen.jpg`,  desc: "cream linen long-sleeve shirt with subtle vertical sand-tone stripes" },
+      { name: "Navy Oxford",    price: 130, category: "shirts",  slug: "shirt_oxford", img: `${RAW}/garment_shirt_oxford.jpg`, desc: "navy blue oxford button-down shirt with contrast white collar and cuffs" },
+      { name: "Heather Polo",   price: 85,  category: "shirts",  slug: "polo_grey",    img: `${RAW}/garment_polo_grey.jpg`,    desc: "heather grey ribbed knit polo shirt with three-button placket" },
+      { name: "Night Bomber",   price: 280, category: "jackets", slug: "bomber_black", img: `${RAW}/garment_bomber_black.jpg`, desc: "black nylon MA-1 bomber jacket with orange lining at the cuffs and waistband" },
+      { name: "Suede Trucker",  price: 380, category: "jackets", slug: "trucker_tan",  img: `${RAW}/garment_trucker_tan.jpg`,  desc: "tan suede trucker jacket with cream stitching and two chest flap pockets" },
+      { name: "Utility Field",  price: 240, category: "jackets", slug: "utility_oliv", img: `${RAW}/garment_utility_oliv.jpg`, desc: "olive cotton utility field jacket with four large flap pockets and storm cuffs" },
+      { name: "Onyx Biker",     price: 420, category: "jackets", slug: "biker_black",  img: `${RAW}/garment_biker_black.jpg`,  desc: "black leather biker jacket with asymmetric zip and silver hardware" },
+      { name: "Wool Overshirt", price: 295, category: "jackets", slug: "overshirt_cr", img: `${RAW}/garment_overshirt_cr.jpg`, desc: "cream brushed wool overshirt with patch pockets and horn buttons" },
+      { name: "Varsity",        price: 310, category: "jackets", slug: "varsity_char", img: `${RAW}/garment_varsity_char.jpg`, desc: "charcoal wool varsity jacket with cream leather sleeves and striped knit cuffs" },
     ];
 
     // ─── Stylist pairings ───
@@ -969,6 +972,19 @@
       status.innerHTML = '<span style="color:var(--accent)">— By appointment. Please write to the atelier.</span>';
     }
 
+    // Proxy job shape: { status: "pending"|"ready"|"failed", image_url?, error? }
+    function isJobReady(d) {
+      return d?.status === 'ready' && typeof d.image_url === 'string';
+    }
+    function jobErrorMessage(d) {
+      return d?.error || d?.status || 'unknown error';
+    }
+    async function parseProxyJSON(r) {
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || `proxy returned ${r.status}`);
+      return d;
+    }
+
     // ─── Polling helper ───
     async function pollJob(jobId, onProgress) {
       for (let i = 0; i < 240; i++) {
@@ -976,7 +992,8 @@
         try {
           const r = await fetch(`${PROXY}/jobs/${jobId}`, { headers: { 'Accept': 'application/json' } });
           const d = await r.json();
-          if (d.status === 'ready') return d;
+          if (!r.ok) return { status: 'failed', error: d.error || `HTTP ${r.status}` };
+          if (isJobReady(d)) return d;
           if (d.status === 'failed') return d;
         } catch (e) { continue; }
         if (onProgress) onProgress(i);
@@ -989,6 +1006,11 @@
       const p = products[idx];
       if (!isProxyConfigured()) {
         showProxySetup();
+        return;
+      }
+      if (!currentModelUrl) {
+        document.getElementById('vtoStatus').innerHTML = '<span style="color:#C26A4D">Choose a likeness first.</span>';
+        document.getElementById('step1')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         return;
       }
       document.getElementById('garmentSlot').innerHTML = `<img src="${p.img}" alt="${p.name}">`;
@@ -1007,16 +1029,15 @@
             prompt: `The person of image 1, maintaining exactly their face and pose, wearing the ${p.desc} of image 2.`,
           }),
         });
-        const { job_id, error } = await r.json();
-        if (!job_id) throw new Error(error || `proxy returned ${r.status}`);
+        const { job_id } = await parseProxyJSON(r);
         const d = await pollJob(job_id, i => status.textContent = `The atelier is rendering — ${i*2}s`);
-        if (d.ok) {
+        if (isJobReady(d)) {
           const imgSrc = PROXY + d.image_url;
           document.getElementById('resultSlot').innerHTML = `<img src="${imgSrc}" alt="${p.name}" class="fade-in">`;
           status.innerHTML = `<span style="color:var(--accent)">A fitting of the <strong>${p.name}</strong>.</span>`;
           showPairing(p, imgSrc);
         } else {
-          document.getElementById('resultSlot').innerHTML = `<div class="result-icon">&#10038;</div><div>${d.detail?.status || d.error || d.status}</div>`;
+          document.getElementById('resultSlot').innerHTML = `<div class="result-icon">&#10038;</div><div>${jobErrorMessage(d)}</div>`;
           status.innerHTML = `<span style="color:#C26A4D">The fitting could not be completed.</span>`;
         }
       } catch (e) {
@@ -1090,6 +1111,10 @@
       const { base, partner } = window._pairingState || {};
       if (!base || !partner) return;
       if (!isProxyConfigured()) { showProxySetup(); return; }
+      if (!currentModelUrl) {
+        document.getElementById('vtoStatus').innerHTML = '<span style="color:#C26A4D">Choose a likeness first.</span>';
+        return;
+      }
 
       document.getElementById('garmentSlot').innerHTML = `
         <div style="display:flex;gap:2px;width:100%;height:100%;">
@@ -1110,16 +1135,16 @@
             prompt,
           }),
         });
-        const { job_id, error } = await r.json();
-        if (!job_id) throw new Error(error || `proxy returned ${r.status}`);
+        const { job_id } = await parseProxyJSON(r);
         const d = await pollJob(job_id, i => status.textContent = `Composing — ${i*2}s`);
-        if (d.ok) {
+        if (isJobReady(d)) {
           const comboSrc = PROXY + d.image_url;
           document.getElementById('resultSlot').innerHTML = `<img src="${comboSrc}" alt="complete look" class="fade-in">`;
           status.innerHTML = `<span style="color:var(--accent)">A complete look — <strong>${base.name}</strong> with <strong>${partner.name}</strong>.</span>`;
           document.getElementById('bundleBanner').style.display = 'block';
           startCountdown();
         } else {
+          document.getElementById('resultSlot').innerHTML = `<div class="result-icon">&#10038;</div><div>${jobErrorMessage(d)}</div>`;
           status.innerHTML = `<span style="color:#C26A4D">The composition could not be completed.</span>`;
         }
       } catch (e) {
