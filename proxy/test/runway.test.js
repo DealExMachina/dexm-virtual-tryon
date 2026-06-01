@@ -7,8 +7,10 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_ANIMATION_SEQUENCE,
   VIKING_MOOD_SEQUENCE,
+  buildOutfitRevealSequence,
   resolvePublicImageUrl,
   resolveAnimationSequence,
+  resolveClipImageInput,
   buildImageToVideoPayload,
   extractVideoUrl,
   estimateClipCost,
@@ -111,5 +113,44 @@ describe("withCarbonEstimate", () => {
     const c = withCarbonEstimate({ estimated_credits: 25, estimated_usd: 0.25 });
     assert.equal(c.estimated_co2_g, 10);
     assert.ok(c.carbon_disclaimer.includes("Runway"));
+  });
+});
+
+describe("buildOutfitRevealSequence", () => {
+  test("returns 4 keyframe beats with garment descriptions", () => {
+    const seq = buildOutfitRevealSequence({
+      shirt_desc: "white oxford shirt",
+      jacket_desc: "black leather biker jacket over the shirt",
+    });
+    assert.equal(seq.length, 4);
+    assert.deepEqual(seq.map(c => c.name), [
+      "confident_base", "shirt_surprise", "full_look_ecstatic", "calm_confident",
+    ]);
+    assert.equal(seq[0].imageKey, "base");
+    assert.equal(seq[1].imageKey, "shirt");
+    assert.equal(seq[2].imageKey, "combo");
+    assert.equal(seq[3].chainFromPrevious, true);
+    assert.ok(seq[1].promptText.includes("white oxford shirt"));
+    assert.ok(seq[2].promptText.includes("black leather biker jacket"));
+  });
+});
+
+describe("resolveClipImageInput", () => {
+  test("uses keyframe map when imageKey is set", () => {
+    const clip = { name: "shirt", imageKey: "shirt" };
+    const r = resolveClipImageInput(clip, 1, [], {
+      imageMap: { shirt: "data:image/jpeg;base64,abc" },
+    });
+    assert.equal(r.source, "keyframe");
+    assert.equal(r.input, "data:image/jpeg;base64,abc");
+  });
+
+  test("expression chain falls back to previous clip video", () => {
+    const clip = { name: "smile" };
+    const r = resolveClipImageInput(clip, 1, [{ video_url: "https://cdn/a.mp4" }], {
+      defaultImage: "https://base.jpg",
+    });
+    assert.equal(r.source, "chain");
+    assert.equal(r.videoUrl, "https://cdn/a.mp4");
   });
 });

@@ -41,8 +41,8 @@ import {
 } from "./lib/utils.js";
 import {
   resolvePublicImageUrl, runAnimationJob, jpegToDataUri,
-  DEFAULT_RUNWAY_MODEL, DEFAULT_RUNWAY_RATIO, DEFAULT_ANIMATION_SEQUENCE,
-  resolveAnimationSequence,
+  DEFAULT_RUNWAY_MODEL, DEFAULT_RUNWAY_RATIO,
+  resolveAnimationSequence, buildOutfitRevealSequence,
   estimateSequenceCost, withCarbonEstimate, fetchRunwayOrganization,
 } from "./lib/runway.js";
 
@@ -215,10 +215,15 @@ async function handleOutfits(body) {
 
 // POST /animations
 // Body: { image_url | image_job_id, mode?, clips? }
-//   mode "sequence" (default) — 4 chained Viking moods → one stitched MP4 (~100 credits)
-//   mode "arc"              — 1×10s continuous arc (~50 credits)
+//   mode "sequence" (default) — 4 chained Viking moods → one stitched MP4
+//   mode "arc"              — 1×10s continuous arc
+//   mode "reveal"           — outfit reveal: base → shirt → combo → calm
+//     requires: base_image_url, shirt_job_id, combo_job_id
+//     optional: shirt_desc, jacket_desc
 async function handleAnimations(body) {
   if (!GEN3) throw new ClientError("GEN3_API_KEY not configured", 503);
+
+  if (body.mode === "reveal") return handleRevealAnimation(body);
 
   let sequence;
   try {
@@ -256,12 +261,77 @@ async function handleAnimations(body) {
     model: RUNWAY_MODEL,
     ratio: RUNWAY_RATIO,
   });
-  runAnimationJob(jobs, jobId, imageInput, GEN3, sequence, {
+  runAnimationJob(jobs, jobId, GEN3, sequence, {
+    defaultImage: imageInput,
     model: RUNWAY_MODEL,
     ratio: RUNWAY_RATIO,
     stitch: body.stitch !== false,
   });
   return { job_id: jobId, cost };
+}
+
+async function handleRevealAnimation(body) {
+  if (!body.shirt_job_id || !body.combo_job_id) {
+    throw new ClientError('"shirt_job_id" and "combo_job_id" are required for mode reveal', 400);
+  }
+
+  const baseUrl = body.base_image_url || body.person_url || body.image_url;
+  if (!baseUrl) {
+    throw new ClientError('"base_image_url" (or person_url) is required for mode reveal', 400);
+  }
+
+  const shirtJob = jobs.get(body.shirt_job_id);
+  const comboJob = jobs.get(body.combo_job_id);
+  if (!shirtJob?.jpeg) throw new ClientError("shirt_job_id not found or not ready", 404);
+  if (!comboJob?.jpeg) throw new ClientError("combo_job_id not found or not ready", 404);
+
+  let baseInput;
+  if (baseUrl.startsWith("data:")) {
+    baseInput = baseUrl;
+  } else {
+    try {
+      baseInput = resolvePublicImageUrl(baseUrl, PUBLIC_BASE);
+    } catch (e) {
+      throw new ClientError(e.message, 400);
+    }
+  }
+
+  const sequence = buildOutfitRevealSequence({
+    shirt_desc: body.shirt_desc,
+    jacket_desc: body.jacket_desc,
+  }).filter(c => {
+    if (!Array.isArray(body.clips) || body.clips.length === 0) return true;
+    return body.clips.includes(c.name);
+  });
+  if (sequence.length === 0) {
+    throw new ClientError("no reveal clips matched body.clips", 400);
+  }
+
+  const jobId = newJobId();
+  const cost = withCarbonEstimate(estimateSequenceCost(sequence, RUNWAY_MODEL));
+  jobs.set(jobId, {
+    status: "pending",
+    type: "animation",
+    mode: "reveal",
+    created: Date.now(),
+    clips: [],
+    cost,
+    model: RUNWAY_MODEL,
+    ratio: RUNWAY_RATIO,
+  });
+
+  runAnimationJob(jobs, jobId, GEN3, sequence, {
+    imageMap: {
+      base: baseInput,
+      shirt: jpegToDataUri(shirtJob.jpeg),
+      combo: jpegToDataUri(comboJob.jpeg),
+    },
+    model: RUNWAY_MODEL,
+    ratio: RUNWAY_RATIO,
+    stitch: body.stitch !== false,
+  });
+
+  return { job_id: jobId, cost, mode: "reveal" };
 }
 
 // GET /runway/balance — live credit balance from Runway dev portal

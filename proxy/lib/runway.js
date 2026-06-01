@@ -108,6 +108,64 @@ export const EXPRESSION_ARC_SINGLE = [
 export const EXPRESSION_SEQUENCE_CHAINED = VIKING_MOOD_SEQUENCE;
 export const DEFAULT_ANIMATION_SEQUENCE = VIKING_MOOD_SEQUENCE;
 
+/** Shared lock for outfit-reveal beats (BFL stills as keyframes). */
+export const REVEAL_LOCK =
+  "Static locked-off camera, three-quarter fashion portrait, same person throughout, " +
+  "identical face and features, plain white studio background, photorealistic editorial.";
+
+/**
+ * Four-beat outfit reveal: base → shirt VTO → combo VTO → calm (chained on combo).
+ * Each beat uses an explicit BFL keyframe except the last, which chains from beat 3.
+ */
+export function buildOutfitRevealSequence({ shirt_desc, jacket_desc } = {}) {
+  const shirt = shirt_desc || "new shirt";
+  const jacket = jacket_desc || "layered outerwear over the shirt";
+  return [
+    {
+      name: "confident_base",
+      mood: "confident",
+      duration: 5,
+      imageKey: "base",
+      chainFromPrevious: false,
+      promptText:
+        `${REVEAL_LOCK} Person in their own clothes, no new garments yet. ` +
+        "Confident relaxed posture, subtle breathing, steady direct gaze, slight proud ease.",
+    },
+    {
+      name: "shirt_surprise",
+      mood: "surprised delight",
+      duration: 5,
+      imageKey: "shirt",
+      chainFromPrevious: false,
+      promptText:
+        `${REVEAL_LOCK} Person now wearing the ${shirt}. ` +
+        "(0–1s) eyes widen in pleasant surprise; (1–3s) glances down at the new shirt with delighted curiosity; " +
+        "(3–5s) satisfied smile while admiring the garment, small nod of approval.",
+    },
+    {
+      name: "full_look_ecstatic",
+      mood: "ecstatic",
+      duration: 5,
+      imageKey: "combo",
+      chainFromPrevious: false,
+      promptText:
+        `${REVEAL_LOCK} Person wearing ${jacket}. ` +
+        "(0–2s) face lights up with an ecstatic grin; (2–4s) subtle celebratory energy — " +
+        "small fist pump or open-hand cheer, eyes bright; (4–5s) beaming proudly at camera.",
+    },
+    {
+      name: "calm_confident",
+      mood: "calm confidence",
+      duration: 5,
+      imageKey: "combo",
+      chainFromPrevious: true,
+      promptText:
+        `${REVEAL_LOCK} Same full outfit. Energy settles: (0–2s) cheer softens to warm satisfied smile; ` +
+        "(2–5s) calm confident stare into camera, shoulders relaxed, quiet self-assured presence.",
+    },
+  ];
+}
+
 export function estimateClipCost(model, durationSeconds) {
   const cps = VIDEO_CREDITS_PER_SECOND[model] ?? 5;
   const credits = cps * durationSeconds;
@@ -333,23 +391,43 @@ export function resolvePublicImageUrl(imageUrl, publicBaseUrl) {
   );
 }
 
+export function resolveClipImageInput(clip, index, clips, { imageMap, defaultImage, ratio }) {
+  if (clip.chainFromPrevious && index > 0 && clips[index - 1]?.video_url) {
+    return { source: "chain", videoUrl: clips[index - 1].video_url };
+  }
+  if (clip.imageKey && imageMap?.[clip.imageKey]) {
+    return { source: "keyframe", input: imageMap[clip.imageKey] };
+  }
+  if (index === 0 && defaultImage) {
+    return { source: "default", input: defaultImage };
+  }
+  if (index > 0 && !clip.imageKey && !clip.chainFromPrevious && clips[index - 1]?.video_url) {
+    return { source: "chain", videoUrl: clips[index - 1].video_url };
+  }
+  throw new Error(`no image input for clip "${clip.name}"`);
+}
+
 export function runAnimationJob(
-  jobs, jobId, imageInput, apiKey,
+  jobs, jobId, apiKey,
   sequence = VIKING_MOOD_SEQUENCE,
   opts = {},
 ) {
   const model = opts.model || DEFAULT_RUNWAY_MODEL;
-  const chainFrames = sequence.length > 1;
-  const stitchOutput = chainFrames && opts.stitch !== false;
-  const preview = imageInput.startsWith("data:") ? "(data URI)" : imageInput.slice(0, 60);
+  const stitchOutput = sequence.length > 1 && opts.stitch !== false;
+  const imageMap = opts.imageMap || null;
+  const defaultImage = opts.defaultImage;
+  const modeLabel = imageMap ? "keyframe-reveal" : "expression-chain";
+  const preview = defaultImage?.startsWith("data:")
+    ? "(data URI)"
+    : (imageMap?.base || defaultImage || "").slice(0, 60);
   console.log(
-    `[animations/${jobId}] ${sequence.length} clip(s) sequential` +
-    `${chainFrames ? "+chained" : ""}${stitchOutput ? "+stitch" : ""} from ${preview}...`
+    `[animations/${jobId}] ${sequence.length} clip(s) ${modeLabel}` +
+    `${stitchOutput ? "+stitch" : ""} from ${preview}...`
   );
 
   (async () => {
     const clips = [];
-    let frameInput = imageInput;
+    const ratio = opts.ratio || DEFAULT_RUNWAY_RATIO;
 
     try {
       for (let i = 0; i < sequence.length; i++) {
@@ -357,6 +435,15 @@ export function runAnimationJob(
         jobs.set(jobId, { ...jobs.get(jobId), clips: [...clips], status: "pending" });
 
         try {
+          const resolved = resolveClipImageInput(clip, i, clips, { imageMap, defaultImage, ratio });
+          let frameInput;
+          if (resolved.source === "chain") {
+            console.log(`[animations/${jobId}/${clip.name}] last frame → next input`);
+            frameInput = await videoUrlToLastFrameDataUri(resolved.videoUrl, 0.5, ratio);
+          } else {
+            frameInput = resolved.input;
+          }
+
           const result = await runwayRequest(apiKey, "image_to_video", buildImageToVideoPayload(
             frameInput, clip.promptText, clip.duration, opts
           ));
@@ -371,13 +458,9 @@ export function runAnimationJob(
             task_id: result.id,
             video_url,
             status: "ready",
-            chained: i > 0,
+            chained: resolved.source === "chain",
+            keyframe: resolved.source === "keyframe" ? clip.imageKey : undefined,
           });
-
-          if (chainFrames && i < sequence.length - 1) {
-            console.log(`[animations/${jobId}/${clip.name}] last frame → next mood input`);
-            frameInput = await videoUrlToLastFrameDataUri(video_url, 0.5, opts.ratio || DEFAULT_RUNWAY_RATIO);
-          }
         } catch (e) {
           console.error(`[animations/${jobId}/${clip.name}] error: ${e.message}`);
           clips.push({
