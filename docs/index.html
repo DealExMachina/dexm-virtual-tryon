@@ -285,71 +285,59 @@
       letter-spacing: 1.8px;
       text-transform: uppercase;
       color: var(--ink-mid);
-      margin-bottom: 10px;
+      margin-bottom: 14px;
     }
-    #modelPrompt {
-      width: 100%;
-      min-height: 108px;
-      padding: 14px 16px;
+    .likeness-prompt-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+    @media (max-width: 1024px) {
+      .likeness-prompt-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    .likeness-prompt-card {
+      cursor: pointer;
+      text-align: left;
+      padding: 16px 18px;
       background: var(--bg-alt);
       border: 1px solid var(--line);
-      border-radius: 4px;
-      font-family: var(--mono);
-      font-size: 13px;
-      line-height: 1.55;
-      color: var(--ink);
-      resize: vertical;
-      box-sizing: border-box;
+      border-radius: 6px;
+      transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
     }
-    #modelPrompt::placeholder { color: var(--ink-dim); }
-    #modelPrompt:focus { outline: none; border-color: var(--accent); }
-    .custom-likeness-tips {
-      margin: 16px 0 0;
-      padding-left: 18px;
-      font-size: 13px;
+    .likeness-prompt-card:hover {
+      border-color: var(--accent-soft);
+      transform: translateY(-2px);
+    }
+    .likeness-prompt-card.selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+    .likeness-prompt-card .lp-name {
+      font-family: var(--serif);
+      font-size: 18px;
+      font-weight: 400;
+      margin-bottom: 4px;
+    }
+    .likeness-prompt-card .lp-tag {
+      font-size: 10px;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+      margin-bottom: 8px;
+    }
+    .likeness-prompt-card .lp-desc {
+      font-size: 12px;
       color: var(--ink-mid);
-      line-height: 1.65;
+      line-height: 1.5;
     }
-    .custom-likeness-tips li { margin-bottom: 6px; }
-    .custom-likeness-tips li:last-child { margin-bottom: 0; }
     .custom-likeness-policy {
-      margin-top: 14px;
+      margin-top: 18px;
       padding: 12px 14px;
       background: var(--bg-alt);
       border-left: 2px solid var(--line);
       font-size: 12px;
       color: var(--ink-dim);
       line-height: 1.6;
-    }
-    .custom-likeness-examples {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 10px;
-      margin-top: 18px;
-    }
-    .custom-likeness-examples-label {
-      font-size: 11px;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-      color: var(--ink-dim);
-      margin-right: 4px;
-    }
-    .prompt-chip {
-      font-family: var(--sans);
-      font-size: 11px;
-      letter-spacing: 0.5px;
-      padding: 8px 14px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: var(--bg);
-      color: var(--ink-mid);
-      cursor: pointer;
-      transition: border-color 0.25s ease, color 0.25s ease;
-    }
-    .prompt-chip:hover {
-      border-color: var(--accent-soft);
-      color: var(--accent);
     }
     .custom-likeness-actions {
       text-align: center;
@@ -882,34 +870,23 @@
       <span class="step-num">01</span>
       <h2>Begin with you.</h2>
     </div>
-    <p>Choose a likeness that resonates — or describe one of your own. Each silhouette is held faithfully through every fitting.</p>
+    <p>Choose a likeness from the edit — or select a curated silhouette below. Each is held faithfully through every fitting.</p>
 
     <div class="preset-grid" id="presetModels"></div>
 
     <div class="custom-likeness" id="customLikeness">
       <div class="custom-likeness-head">
-        <span class="custom-likeness-badge">Your own likeness</span>
-        <h3 class="custom-likeness-title">Compose a custom model</h3>
+        <span class="custom-likeness-badge">Curated silhouettes</span>
+        <h3 class="custom-likeness-title">Choose another likeness</h3>
         <p class="custom-likeness-lead">
-          Prefer someone not in the edit? Describe a single person in plain language — the atelier renders a new likeness with FLUX, then holds their face through every fitting.
+          Prefer someone not in the house edit? Pick one of our pre-composed editorial portraits — women and youth included — then render with FLUX. Free-text prompts are not offered, to keep the atelier safe and consistent.
         </p>
       </div>
-      <label class="custom-likeness-label" for="modelPrompt">Describe the person</label>
-      <textarea id="modelPrompt" rows="4" placeholder="e.g. Editorial waist-up portrait of a woman in her forties, warm smile, olive linen shirt, soft window light, neutral backdrop"></textarea>
-      <ul class="custom-likeness-tips">
-        <li>One person only — age, build, expression, and a <strong>plain top</strong> (crew-neck or simple shirt) work best for try-on.</li>
-        <li>Frame the shot <strong>waist-up</strong> or chest-up; keep the background simple and uncluttered.</li>
-        <li>Be specific about light and mood — e.g. &ldquo;soft natural light from the left&rdquo;, &ldquo;relaxed editorial pose&rdquo;.</li>
-      </ul>
+      <span class="custom-likeness-label">Select a silhouette</span>
+      <div class="likeness-prompt-grid" id="likenessPromptGrid"></div>
       <p class="custom-likeness-policy">
-        <strong>House policy:</strong> offensive, violent, sexual, hateful, or otherwise inappropriate prompts are not permitted and may be declined by the atelier&rsquo;s safety filters.
+        <strong>House policy:</strong> only these curated, modest editorial prompts are available — one person, waist-up, plain top, neutral backdrop. Offensive, violent, sexual, hateful, or otherwise inappropriate requests are not permitted and may be declined by the atelier&rsquo;s safety filters.
       </p>
-      <div class="custom-likeness-examples">
-        <span class="custom-likeness-examples-label">Examples</span>
-        <button type="button" class="prompt-chip" onclick="fillModelPromptExample(0)">Thirties · editorial</button>
-        <button type="button" class="prompt-chip" onclick="fillModelPromptExample(1)">Forties · considered</button>
-        <button type="button" class="prompt-chip" onclick="fillModelPromptExample(2)">Twenties · lithe</button>
-      </div>
       <div class="custom-likeness-actions">
         <button class="btn btn-dark" id="generateModelBtn" onclick="generateCustomModel()">Render the likeness</button>
         <div id="modelStatus" class="status"></div>
@@ -1092,24 +1069,95 @@
           </div>
         </div>`).join('');
     }
-    const MODEL_PROMPT_EXAMPLES = [
-      'A considered editorial portrait of a person in their 30s wearing a plain white crew-neck t-shirt, neutral linen backdrop, soft natural light from the left, relaxed pose, shot from waist up',
-      'Editorial portrait of a person in their forties, calm confident expression, cream oxford shirt, neutral studio backdrop, soft diffused light, waist-up framing',
-      'Editorial portrait of a person in their twenties, lean build, heather grey ribbed polo, minimal grey backdrop, bright even light, relaxed shoulders, waist up',
+    // Curated likeness prompts only — no free text (abuse prevention).
+    const CURATED_LIKENESS_PROMPTS = [
+      {
+        id: 'woman-forties',
+        label: 'Claire',
+        tag: 'Woman · Forties',
+        desc: 'Warm, considered expression; cream oxford shirt.',
+        prompt: 'Editorial fashion portrait of a woman in her forties, warm calm smile, cream oxford button-down shirt, neutral studio backdrop, soft diffused light, relaxed upright pose, waist-up framing, modest and professional',
+      },
+      {
+        id: 'woman-thirties',
+        label: 'Maya',
+        tag: 'Woman · Thirties',
+        desc: 'Soft editorial light; plain white crew-neck.',
+        prompt: 'Editorial fashion portrait of a woman in her thirties, natural relaxed expression, plain white crew-neck t-shirt, neutral linen backdrop, soft natural light from the left, waist-up, modest and professional',
+      },
+      {
+        id: 'woman-twenties',
+        label: 'Inès',
+        tag: 'Woman · Twenties',
+        desc: 'Youthful poise; heather grey ribbed polo.',
+        prompt: 'Editorial fashion portrait of a young woman in her twenties, confident friendly expression, heather grey ribbed knit polo with three-button placket, minimal grey backdrop, bright even light, waist-up, modest and professional',
+      },
+      {
+        id: 'man-thirties',
+        label: 'Julian',
+        tag: 'Man · Thirties',
+        desc: 'Editorial calm; white crew-neck tee.',
+        prompt: 'Editorial fashion portrait of a man in his thirties, relaxed neutral expression, plain white crew-neck t-shirt, neutral linen backdrop, soft natural light from the left, waist-up framing, modest and professional',
+      },
+      {
+        id: 'man-forties',
+        label: 'Marcus',
+        tag: 'Man · Forties',
+        desc: 'Assured gaze; navy oxford shirt.',
+        prompt: 'Editorial fashion portrait of a man in his forties, calm confident expression, navy oxford button-down shirt, neutral studio backdrop, soft diffused light, waist-up, modest and professional',
+      },
+      {
+        id: 'man-twenties',
+        label: 'Noah',
+        tag: 'Man · Twenties',
+        desc: 'Lithe youth; olive workwear shirt.',
+        prompt: 'Editorial fashion portrait of a young man in his twenties, lean build, relaxed expression, olive green workwear shirt with chest pockets, minimal backdrop, bright even light, waist-up, modest and professional',
+      },
+      {
+        id: 'woman-fifties',
+        label: 'Helena',
+        tag: 'Woman · Fifties',
+        desc: 'Elegant maturity; sand-tone linen shirt.',
+        prompt: 'Editorial fashion portrait of a woman in her fifties, dignified warm expression, sand-tone linen shirt with subtle vertical stripes, neutral backdrop, soft window light, waist-up, modest and professional',
+      },
+      {
+        id: 'youth-unisex',
+        label: 'Sasha',
+        tag: 'Youth · Twenties',
+        desc: 'Androgynous editorial; grey polo, even light.',
+        prompt: 'Editorial fashion portrait of a person in their early twenties, androgynous presentation, neutral friendly expression, heather grey polo shirt, clean minimal studio backdrop, soft even lighting, waist-up, modest and professional',
+      },
     ];
+    let selectedLikenessPromptId = null;
 
-    function fillModelPromptExample(i) {
-      const ta = document.getElementById('modelPrompt');
-      if (!ta || MODEL_PROMPT_EXAMPLES[i] == null) return;
-      ta.value = MODEL_PROMPT_EXAMPLES[i];
-      ta.focus();
-      document.getElementById('customLikeness')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    function renderLikenessPrompts() {
+      const grid = document.getElementById('likenessPromptGrid');
+      if (!grid) return;
+      grid.innerHTML = CURATED_LIKENESS_PROMPTS.map(p => `
+        <button type="button" class="likeness-prompt-card" data-id="${p.id}"
+          onclick="selectLikenessPrompt('${p.id}')">
+          <div class="lp-name">${p.label}</div>
+          <div class="lp-tag">${p.tag}</div>
+          <div class="lp-desc">${p.desc}</div>
+        </button>`).join('');
+    }
+
+    function selectLikenessPrompt(id) {
+      selectedLikenessPromptId = id;
+      document.querySelectorAll('.preset-card').forEach(el => el.classList.remove('selected'));
+      document.querySelectorAll('.likeness-prompt-card').forEach(el => {
+        el.classList.toggle('selected', el.dataset.id === id);
+      });
+      document.getElementById('customLikeness')?.classList.add('active');
+      document.getElementById('modelStatus').innerHTML = '';
     }
 
     function selectPreset(idx) {
       const m = presetModels[idx];
       currentModelUrl = m.img;
       currentPresetSlug = m.slug;
+      selectedLikenessPromptId = null;
+      document.querySelectorAll('.likeness-prompt-card').forEach(el => el.classList.remove('selected'));
       document.querySelectorAll('.preset-card').forEach((el, i) => {
         el.classList.toggle('selected', i === idx);
       });
@@ -1152,34 +1200,34 @@
       renderProducts(cat);
     }
 
-    // ─── Custom likeness via POST /models ───
+    // ─── Curated likeness via POST /models ───
     async function generateCustomModel() {
       const btn = document.getElementById('generateModelBtn');
       const status = document.getElementById('modelStatus');
-      const promptText = document.getElementById('modelPrompt')?.value.trim();
+      const curated = CURATED_LIKENESS_PROMPTS.find(p => p.id === selectedLikenessPromptId);
       if (!isProxyConfigured()) {
         showProxySetup();
         return;
       }
-      if (!promptText) {
-        status.innerHTML = '<span style="color:#C26A4D">Please describe your likeness before rendering.</span>';
-        document.getElementById('modelPrompt')?.focus();
+      if (!curated) {
+        status.innerHTML = '<span style="color:#C26A4D">Please select a curated silhouette first.</span>';
+        document.getElementById('likenessPromptGrid')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         return;
       }
       btn.disabled = true;
       btn.textContent = 'Rendering the likeness…';
-      status.textContent = 'The atelier is composing your likeness…';
+      status.textContent = `The atelier is composing ${curated.label}…`;
       try {
         const r = await fetch(`${PROXY}/models`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: promptText, width: 832, height: 1216 }),
+          body: JSON.stringify({ prompt: curated.prompt, width: 832, height: 1216 }),
         });
         const { job_id } = await parseProxyJSON(r);
-        const d = await pollJob(job_id, i => status.textContent = `Rendering your likeness — ${i * 2}s`);
+        const d = await pollJob(job_id, i => status.textContent = `Rendering ${curated.label} — ${i * 2}s`);
         if (isJobReady(d)) {
           const imgSrc = PROXY + d.image_url;
-          const entry = { slug: 'custom', name: 'Your likeness', tag: 'Custom prompt', img: imgSrc };
+          const entry = { slug: 'custom', name: curated.label, tag: curated.tag, img: imgSrc };
           const idx = presetModels.findIndex(m => m.slug === 'custom');
           if (idx >= 0) presetModels[idx] = entry;
           else presetModels.unshift(entry);
@@ -1641,6 +1689,7 @@
 
     // ─── Boot ───
     renderPresets();
+    renderLikenessPrompts();
     renderProducts();
     selectPreset(0);
   </script>
