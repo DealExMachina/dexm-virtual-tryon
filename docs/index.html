@@ -715,6 +715,48 @@
     .fade-in { animation: fadein 0.5s ease-out; }
     @keyframes fadein { from { opacity: 0; transform: scale(0.985); } to { opacity: 1; transform: scale(1); } }
 
+    .result-img-wrap video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .btn-reveal {
+      margin-top: 14px;
+      width: 100%;
+      background: linear-gradient(135deg, var(--card) 0%, var(--bg-alt) 100%);
+      border-color: var(--accent);
+      letter-spacing: 2.5px;
+    }
+    .reveal-progress {
+      font-size: 12px;
+      color: var(--ink-mid);
+      letter-spacing: 1px;
+      margin-top: 8px;
+      min-height: 18px;
+    }
+
+    .combo-gift {
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(201, 165, 114, 0.25);
+    }
+    .gift-progress {
+      font-size: 12px;
+      color: var(--ink-mid);
+      letter-spacing: 0.5px;
+      margin-top: 8px;
+      min-height: 18px;
+      font-style: italic;
+    }
+    .gift-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+    .gift-actions .btn { flex: 1; min-width: 140px; }
+
     @media (max-width: 1024px) {
       .work { grid-template-columns: 1fr; }
       .preset-grid { grid-template-columns: repeat(3, 1fr); }
@@ -842,6 +884,25 @@
   <script>
     // Assets served from the repo's raw GitHub URLs — this file deploys to any static host.
     const RAW = 'https://raw.githubusercontent.com/DealExMachina/dexm-virtual-tryon/main/results';
+    const REPO_RAW = 'https://raw.githubusercontent.com/DealExMachina/dexm-virtual-tryon/main';
+
+    // Complimentary gift with every complete look (combo order)
+    const GIFT_BAG = {
+      name: 'CitySmart Backpack',
+      brand: 'Targus',
+      img: './assets/targus_backpack_side.png',
+      get packshotUrl() {
+        return new URL(this.img, location.href).href;
+      },
+      get proxyUrl() {
+        // Local preview: packshot from the same origin as this page.
+        if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+          return new URL(this.img, location.href).href;
+        }
+        return `${REPO_RAW}/docs/assets/targus_backpack_side.png`;
+      },
+      desc: 'black Targus laptop backpack with orange interior lining, multiple zippered compartments, padded shoulder straps and Targus-branded zipper pulls',
+    };
 
     // BFL VTO proxy — every fitting goes through this URL.
     // Visitors can override via: localStorage.setItem('dexm.proxyUrl', 'https://OTHER.koyeb.app');
@@ -939,6 +1000,10 @@
       document.getElementById('garmentSlot').innerHTML = `<div style="font-family:var(--serif); font-style:italic; color:var(--ink-dim); font-size:22px;">&#10038;</div>`;
       document.getElementById('vtoStatus').innerHTML = '';
       document.getElementById('pairingPanel')?.remove();
+      document.getElementById('revealPanel')?.remove();
+      document.getElementById('comboGiftBlock')?.remove();
+      window._revealState = null;
+      window._giftRunning = false;
     }
 
     function renderProducts(filter = 'all') {
@@ -1019,6 +1084,10 @@
       const status = document.getElementById('vtoStatus');
       status.textContent = `Preparing the fitting…`;
       document.getElementById('pairingPanel')?.remove();
+      document.getElementById('revealPanel')?.remove();
+      document.getElementById('comboGiftBlock')?.remove();
+      window._revealState = null;
+      window._giftRunning = false;
 
       try {
         const r = await fetch(`${PROXY}/fittings`, {
@@ -1035,6 +1104,13 @@
           const imgSrc = PROXY + d.image_url;
           document.getElementById('resultSlot').innerHTML = `<img src="${imgSrc}" alt="${p.name}" class="fade-in">`;
           status.innerHTML = `<span style="color:var(--accent)">A fitting of the <strong>${p.name}</strong>.</span>`;
+          window._revealState = {
+            baseUrl: currentModelUrl,
+            shirtJobId: job_id,
+            shirt: p,
+            comboJobId: null,
+            partner: null,
+          };
           showPairing(p, imgSrc);
         } else {
           document.getElementById('resultSlot').innerHTML = `<div class="result-icon">&#10038;</div><div>${jobErrorMessage(d)}</div>`;
@@ -1075,7 +1151,7 @@
           </div>
         </div>
         <div id="bundleBanner">
-          <div class="urgent">— Held for you, with our compliments — 10% on the pair, for the next 24 hours.</div>
+          <div class="urgent">— Held for you, with our compliments — 10% on the pair, for the next 24 hours. Complete the look to receive a complimentary Targus carry.</div>
           <div class="price-line">
             <strong>${base.name}</strong> &middot; <strong>${partner.name}</strong><br>
             <span class="old">${bundle.toLocaleString()} €</span> &nbsp; <span class="new">${final.toLocaleString()} €</span>
@@ -1143,12 +1219,233 @@
           status.innerHTML = `<span style="color:var(--accent)">A complete look — <strong>${base.name}</strong> with <strong>${partner.name}</strong>.</span>`;
           document.getElementById('bundleBanner').style.display = 'block';
           startCountdown();
+          window._revealState = {
+            baseUrl: currentModelUrl,
+            shirtJobId: window._revealState?.shirtJobId,
+            shirt: base,
+            comboJobId: job_id,
+            comboImageUrl: comboSrc,
+            partner,
+            giftImageUrl: null,
+            giftJobId: null,
+          };
+          showRevealButton(base, partner);
+          showComboGift(base, partner);
         } else {
           document.getElementById('resultSlot').innerHTML = `<div class="result-icon">&#10038;</div><div>${jobErrorMessage(d)}</div>`;
           status.innerHTML = `<span style="color:#C26A4D">The composition could not be completed.</span>`;
         }
       } catch (e) {
         status.innerHTML = `<span style="color:#C26A4D">${e.message}</span>`;
+      }
+    }
+
+    const REVEAL_BEAT_LABELS = {
+      confident_base: 'confident poise',
+      shirt_surprise: 'the shirt surprise',
+      full_look_ecstatic: 'the full look',
+      calm_confident: 'calm confidence',
+    };
+
+    function showRevealButton(base, partner) {
+      let panel = document.getElementById('revealPanel');
+      if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'revealPanel';
+        document.getElementById('vtoStatus').after(panel);
+      }
+      panel.innerHTML = `
+        <button class="btn btn-reveal" id="revealBtn" onclick="playOutfitReveal()">
+          Play the fitting reveal
+        </button>
+        <div class="reveal-progress" id="revealProgress"></div>
+        <div style="font-size:11px;color:var(--ink-dim);margin-top:6px;letter-spacing:1px;">
+          A four-beat film: likeness → ${base.name} → full look → calm confidence
+        </div>`;
+    }
+
+    // ─── Complimentary Targus backpack — unlocked with the complete look ───
+    function showComboGift(base, partner) {
+      const banner = document.getElementById('bundleBanner');
+      if (!banner) return;
+
+      let block = document.getElementById('comboGiftBlock');
+      if (!block) {
+        block = document.createElement('div');
+        block.id = 'comboGiftBlock';
+        block.className = 'combo-gift';
+        banner.appendChild(block);
+      }
+
+      block.innerHTML = `
+        <div class="pair-eyebrow">— Your complimentary gift</div>
+        <div class="pair-row">
+          <img src="${GIFT_BAG.img}" alt="${GIFT_BAG.brand} ${GIFT_BAG.name}">
+          <div class="pair-info">
+            <div class="name">${GIFT_BAG.brand} ${GIFT_BAG.name}</div>
+            <div class="pair-occasion">Included with <strong>${base.name}</strong> &amp; <strong>${partner.name}</strong> — the urban carry, on you.</div>
+            <div class="gift-progress" id="giftProgress">Preparing your gift…</div>
+            <div class="gift-actions" id="giftActions" style="display:none"></div>
+          </div>
+        </div>`;
+
+      startComboGift();
+    }
+
+    function showComboLook() {
+      const url = window._revealState?.comboImageUrl;
+      if (!url) return;
+      document.getElementById('resultSlot').innerHTML =
+        `<img src="${url}" alt="complete look" class="fade-in">`;
+    }
+
+    function showGiftLook() {
+      const url = window._revealState?.giftImageUrl;
+      if (!url) return;
+      document.getElementById('resultSlot').innerHTML =
+        `<img src="${url}" alt="complete look with Targus backpack" class="fade-in">`;
+      const status = document.getElementById('vtoStatus');
+      const s = window._revealState;
+      if (s?.shirt && s?.partner) {
+        status.innerHTML =
+          `<span style="color:var(--accent)">Your complete look — <strong>${s.shirt.name}</strong>, <strong>${s.partner.name}</strong>, and your complimentary <strong>${GIFT_BAG.brand}</strong>.</span>`;
+      }
+    }
+
+    async function startComboGift() {
+      const state = window._revealState;
+      const progress = document.getElementById('giftProgress');
+      const actions = document.getElementById('giftActions');
+      if (!state?.comboJobId || !progress || window._giftRunning) return;
+
+      window._giftRunning = true;
+      progress.textContent = 'The atelier is fitting your complimentary backpack…';
+
+      try {
+        const r = await fetch(`${PROXY}/accessories`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            person_job_id: state.comboJobId,
+            accessory_url: GIFT_BAG.proxyUrl,
+            carry_style: 'backpack',
+            scene: 'urban',
+            accessory_desc: GIFT_BAG.desc,
+          }),
+        });
+
+        if (r.status === 404) {
+          progress.innerHTML =
+            `<span style="color:var(--ink-dim)">Gift preview requires an updated atelier connection (POST /accessories).</span>`;
+          return;
+        }
+
+        const { job_id } = await parseProxyJSON(r);
+        const d = await pollJob(job_id, i =>
+          progress.textContent = `Fitting your ${GIFT_BAG.brand} gift — ${i * 2}s`
+        );
+
+        if (isJobReady(d)) {
+          const giftSrc = PROXY + d.image_url;
+          state.giftImageUrl = giftSrc;
+          state.giftJobId = job_id;
+          progress.innerHTML =
+            `<span style="color:var(--accent)">Your complimentary ${GIFT_BAG.brand} is ready.</span>`;
+          if (actions) {
+            actions.style.display = 'flex';
+            actions.innerHTML = `
+              <button class="btn btn-dark" onclick="showGiftLook()">See the gift on you</button>
+              <button class="btn" onclick="showComboLook()">Front look only</button>`;
+          }
+          showGiftLook();
+        } else {
+          progress.innerHTML =
+            `<span style="color:#C26A4D">The gift fitting could not be completed.</span>`;
+        }
+      } catch (e) {
+        progress.innerHTML = `<span style="color:#C26A4D">${e.message}</span>`;
+      } finally {
+        window._giftRunning = false;
+      }
+    }
+
+    async function pollAnimationJob(jobId, onProgress) {
+      for (let i = 0; i < 300; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        try {
+          const r = await fetch(`${PROXY}/jobs/${jobId}`, { headers: { Accept: 'application/json' } });
+          const d = await r.json();
+          if (!r.ok) return { status: 'failed', error: d.error || `HTTP ${r.status}` };
+          if (onProgress) onProgress(d, i);
+          if (d.status === 'ready' && d.video_url) return d;
+          if (d.status === 'failed') return d;
+        } catch (e) { continue; }
+      }
+      return { status: 'timeout' };
+    }
+
+    async function playOutfitReveal() {
+      const state = window._revealState;
+      if (!isProxyConfigured()) { showProxySetup(); return; }
+      if (!state?.shirtJobId || !state?.comboJobId) {
+        document.getElementById('revealProgress').textContent =
+          'Complete a top fitting, then add the paired outerwear first.';
+        return;
+      }
+
+      const btn = document.getElementById('revealBtn');
+      const progress = document.getElementById('revealProgress');
+      if (btn) { btn.disabled = true; btn.textContent = 'Rendering the reveal…'; }
+      progress.textContent = 'The atelier is preparing your film (~15–20 min on gen4.5)…';
+
+      document.getElementById('resultSlot').innerHTML =
+        `<div class="spinner"></div><div>Composing the fitting reveal…</div>`;
+
+      const jacketDesc = `${state.partner.desc} layered over the ${state.shirt.desc}`;
+
+      try {
+        const r = await fetch(`${PROXY}/animations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: 'reveal',
+            base_image_url: state.baseUrl,
+            shirt_job_id: state.shirtJobId,
+            combo_job_id: state.comboJobId,
+            shirt_desc: state.shirt.desc,
+            jacket_desc: jacketDesc,
+          }),
+        });
+        const { job_id, cost } = await parseProxyJSON(r);
+        progress.textContent = cost
+          ? `Runway estimate: ~${cost.estimated_credits} credits · polling…`
+          : 'Polling the atelier…';
+
+        const d = await pollAnimationJob(job_id, (job) => {
+          const ready = job.clips?.filter(c => c.status === 'ready').length || 0;
+          const total = job.clips?.length || 4;
+          const beat = job.clips?.find(c => c.status !== 'ready' && c.status !== 'failed');
+          const label = beat ? (REVEAL_BEAT_LABELS[beat.name] || beat.name) : 'finishing';
+          progress.textContent = `Beat ${ready}/${total} — ${label}…`;
+        });
+
+        if (d.status === 'ready' && d.video_url) {
+          const videoSrc = PROXY + d.video_url;
+          document.getElementById('resultSlot').innerHTML =
+            `<video src="${videoSrc}" controls autoplay playsinline class="fade-in"></video>`;
+          progress.innerHTML =
+            `<span style="color:var(--accent)">Your fitting reveal is ready.</span>`;
+        } else {
+          document.getElementById('resultSlot').innerHTML =
+            `<div class="result-icon">&#10038;</div><div>The reveal could not be completed.</div>`;
+          progress.innerHTML = `<span style="color:#C26A4D">${jobErrorMessage(d)}</span>`;
+        }
+      } catch (e) {
+        document.getElementById('resultSlot').innerHTML =
+          `<div class="result-icon">&#10038;</div><div>The atelier is unreachable.</div>`;
+        progress.innerHTML = `<span style="color:#C26A4D">${e.message}</span>`;
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Play the fitting reveal'; }
       }
     }
 

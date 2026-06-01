@@ -17,39 +17,60 @@
  *   POST  /models            Generate a person image from a text prompt
  *   POST  /fittings          Single-garment virtual try-on
  *   POST  /outfits           Multi-garment VTO (2–4 pieces, 2×2 grid composite)
- *   GET   /jobs/:id          Poll async job status
+ *   POST  /accessories       Bag/accessory on person via FLUX.2 multi-reference
+ *   POST  /animations        Runway image-to-video sequence (4 Viking editorial clips)
+ *   GET   /jobs/:id          Poll async job status (image or animation)
  *   GET   /images/:id        Serve the rendered image (WebP or JPEG)
- *   GET   /healthz           Liveness probe
+ *   GET   /videos/:id        Stitched mood sequence MP4 (animation jobs)
  *
  * Environment
  *   BFL_API_KEY      required
- *   ALLOWED_ORIGINS  comma-separated list (default: both github.io previews + localhost)
+ *   GEN3_API_KEY or RUNWAYML_API_SECRET  required for POST /animations
+ *   RUNWAY_MODEL     default gen3a_turbo (see docs.dev.runwayml.com/guides/models/)
+ *   RUNWAY_RATIO     default 768:1280 for gen3a_turbo portrait
+ *   RUNWAY_G_CO2_PER_CREDIT  rough gCO2e proxy per credit (default 0.4, not from Runway)
+ *   PUBLIC_BASE_URL  optional — resolves relative /images/:id paths for Runway
  *   PORT             default 8080
  */
 
 import { createServer } from "node:http";
-import sharp from "sharp";
+import {
+  ALLOWED_ORIGINS, TILE_W, TILE_H,
+  resolveImageBytes, toBase64ForBFL,
+  buildComposite, toWebP, toJpeg,
+  corsHeaders,
+} from "./lib/utils.js";
+import {
+  resolvePublicImageUrl, runAnimationJob, jpegToDataUri,
+  DEFAULT_RUNWAY_MODEL, DEFAULT_RUNWAY_RATIO,
+  resolveAnimationSequence, buildOutfitRevealSequence,
+  estimateSequenceCost, withCarbonEstimate, fetchRunwayOrganization,
+} from "./lib/runway.js";
+import {
+  buildAccessoryPrompt,
+  buildBackViewReframePrompt,
+  DEFAULT_ACCESSORY_MODEL,
+  CARRY_STYLES,
+} from "./lib/accessories.js";
+import { withScene, SCENE_IDS } from "./lib/scenes.js";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const BFL = "https://api.bfl.ai/v1";
 const PORT = process.env.PORT || 8080;
 const KEY  = process.env.BFL_API_KEY;
+const GEN3 = process.env.GEN3_API_KEY || process.env.RUNWAYML_API_SECRET;
+const PUBLIC_BASE = process.env.PUBLIC_BASE_URL;
+const RUNWAY_MODEL = process.env.RUNWAY_MODEL || DEFAULT_RUNWAY_MODEL;
+const RUNWAY_RATIO = process.env.RUNWAY_RATIO || DEFAULT_RUNWAY_RATIO;
 
 if (!KEY) { console.error("FATAL: BFL_API_KEY is required"); process.exit(1); }
-
-const ALLOWED_ORIGINS = (
-  process.env.ALLOWED_ORIGINS ||
-  "https://dealexmachina.github.io,https://jeanbapt.github.io," +
-  "http://localhost:8091,http://localhost:8092,http://localhost:5500,http://localhost:8000"
-).split(",").map(s => s.trim());
+if (!GEN3) console.warn("WARNING: GEN3_API_KEY / RUNWAYML_API_SECRET not set — POST /animations disabled");
 
 // BFL model identifiers
-const MODEL_GENERATE = "flux-2-klein-9b";       // fast, cheap — good enough for demo models
-const MODEL_VTO      = "flux-tools/vto-v1";     // dedicated VTO endpoint
-
-// Multi-garment composite target: 0.35 MP (BFL: ~0.5 MP, max 1 MP)
-const TILE_W = 256, TILE_H = 340;               // each garment tile: 256×340
+const MODEL_GENERATE = "flux-2-klein-9b";   // fast, cheap — good enough for demo models
+const MODEL_VTO      = "flux-tools/vto-v1"; // dedicated VTO endpoint
+const MODEL_ACCESSORY = process.env.BFL_ACCESSORY_MODEL || DEFAULT_ACCESSORY_MODEL;
 
 // Job TTL
 const JOB_TTL_MS = 3_600_000; // 1 hour
@@ -102,105 +123,100 @@ async function bflPoll(pollingUrl, maxMs = 300_000) {
   return { status: "Timeout" };
 }
 
-// ─── Image processing ─────────────────────────────────────────────────────────
-
-// Convert any BFL JPEG result to WebP (or keep as JPEG fallback).
-async function convertToWebP(buf) {
-  return sharp(buf).webp({ quality: 82 }).toBuffer();
-}
-
-async function convertToJpeg(buf) {
-  return sharp(buf).jpeg({ quality: 88 }).toBuffer();
-}
-
-// Build a 2×2 grid composite from an array of image URLs.
-// Result is always ~0.35 MP: 512×680 (2 columns × 256, 2 rows × 340).
-async function buildComposite(urls) {
-  const cols = 2, rows = 2;
-  const bufs = await Promise.all(
-    urls.slice(0, cols * rows).map(async url => {
-      const src = await resolveImageBytes(url);
-      return sharp(src)
-        .resize(TILE_W, TILE_H, {
-          fit: "contain",
-          background: { r: 255, g: 255, b: 255 },
-        })
-        .jpeg({ quality: 88 })
-        .toBuffer();
-    })
-  );
-
-  return sharp({
-    create: { width: TILE_W * cols, height: TILE_H * rows, channels: 3,
-               background: { r: 255, g: 255, b: 255 } },
-  })
-    .composite(bufs.map((buf, i) => ({
-      input: buf,
-      left: (i % cols) * TILE_W,
-      top:  Math.floor(i / cols) * TILE_H,
-    })))
-    .jpeg({ quality: 88 })
-    .toBuffer();
-}
-
-// Normalise an image source to raw bytes:
-//   - public HTTPS URL → fetch
-//   - data:image/…;base64,<data> → decode base64
-//   - raw base64 string (no prefix) → decode
-async function resolveImageBytes(src) {
-  if (typeof src !== "string") throw new Error("image source must be a string");
-
-  if (src.startsWith("data:")) {
-    const comma = src.indexOf(",");
-    if (comma < 0) throw new Error("malformed data URL");
-    return Buffer.from(src.slice(comma + 1), "base64");
-  }
-
-  if (/^[A-Za-z0-9+/=\r\n]+$/.test(src.slice(0, 64)) && !src.startsWith("http")) {
-    return Buffer.from(src, "base64");
-  }
-
-  const r = await fetch(src);
-  if (!r.ok) throw new Error(`fetch image ${src}: ${r.status}`);
-  return Buffer.from(await r.arrayBuffer());
-}
-
-// Convert resolved image bytes to raw base64 for BFL (no data: prefix).
-async function toBase64ForBFL(src) {
-  const buf = await resolveImageBytes(src);
-  return buf.toString("base64");
-}
+// (image processing imported from lib/utils.js)
 
 // ─── Job runner ───────────────────────────────────────────────────────────────
+
+async function flux2Generate(endpoint, payload) {
+  const sub = await bflSubmit(endpoint, payload);
+  const result = await bflPoll(sub.polling_url);
+  if (result.status !== "Ready") throw new Error(`BFL ${result.status}`);
+  return fetch(result.result.sample).then(r => r.arrayBuffer()).then(Buffer.from);
+}
+
+async function storeImageJob(jobId, rawBuf) {
+  const webpBuf = await toWebP(rawBuf);
+  const jpegBuf = await toJpeg(rawBuf);
+  jobs.set(jobId, {
+    ...jobs.get(jobId),
+    status: "ready",
+    webp: webpBuf,
+    jpeg: jpegBuf,
+  });
+  console.log(`[${jobId}] ✓ ready (webp ${webpBuf.length}B, jpeg ${jpegBuf.length}B)`);
+}
 
 async function runJob(jobId, endpoint, payload) {
   try {
     const sub = await bflSubmit(endpoint, payload);
     console.log(`[${jobId}] submitted → BFL ${sub.id}`);
-
     const result = await bflPoll(sub.polling_url);
     if (result.status !== "Ready") {
       jobs.set(jobId, { ...jobs.get(jobId), status: "failed", error: result.status });
       console.log(`[${jobId}] ✗ ${result.status}`);
       return;
     }
-
-    // Download and convert to WebP — never hand BFL's signed URL to the browser
     const rawBuf = await fetch(result.result.sample).then(r => r.arrayBuffer()).then(Buffer.from);
-    const webpBuf  = await convertToWebP(rawBuf);
-    const jpegBuf  = await convertToJpeg(rawBuf);
-
-    jobs.set(jobId, {
-      ...jobs.get(jobId),
-      status: "ready",
-      webp: webpBuf,
-      jpeg: jpegBuf,
-    });
-    console.log(`[${jobId}] ✓ ready (webp ${webpBuf.length}B, jpeg ${jpegBuf.length}B)`);
+    await storeImageJob(jobId, rawBuf);
   } catch (e) {
     console.error(`[${jobId}] error:`, e.message);
     jobs.set(jobId, { ...jobs.get(jobId), status: "failed", error: e.message });
   }
+}
+
+/** Backpacks: reframe person to back view, then place bag (single FLUX call often puts bag on chest). */
+function runAccessoryJob(jobId, {
+  personB64,
+  accessoryB64,
+  carryStyle,
+  scene,
+  prompt,
+  accessoryDesc,
+  width,
+  height,
+  safety_tolerance,
+  reframeBack,
+}) {
+  (async () => {
+    try {
+      let personInput = personB64;
+      const w = width || 832;
+      const h = height || 1216;
+      const safety = safety_tolerance ?? 2;
+      const basePayload = { width: w, height: h, safety_tolerance: safety, output_format: "jpeg" };
+
+      if (carryStyle === "backpack" && reframeBack !== false) {
+        jobs.set(jobId, { ...jobs.get(jobId), step: "reframe_back" });
+        console.log(`[accessories/${jobId}] step 1/2 reframe → back view`);
+        const reframeBuf = await flux2Generate(MODEL_ACCESSORY, {
+          ...basePayload,
+          prompt: buildBackViewReframePrompt(scene),
+          input_image: personInput,
+        });
+        personInput = reframeBuf.toString("base64");
+      }
+
+      jobs.set(jobId, { ...jobs.get(jobId), step: "place_accessory" });
+      const stepNum = carryStyle === "backpack" && reframeBack !== false ? "2/2" : "1/1";
+      console.log(`[accessories/${jobId}] step ${stepNum} place accessory`);
+      const placePrompt = prompt || buildAccessoryPrompt({
+        accessory_desc: accessoryDesc,
+        carry_style: carryStyle,
+        scene,
+      });
+
+      const rawBuf = await flux2Generate(MODEL_ACCESSORY, {
+        ...basePayload,
+        prompt: placePrompt,
+        input_image: personInput,
+        input_image_2: accessoryB64,
+      });
+      await storeImageJob(jobId, rawBuf);
+    } catch (e) {
+      console.error(`[accessories/${jobId}] error:`, e.message);
+      jobs.set(jobId, { ...jobs.get(jobId), status: "failed", error: e.message });
+    }
+  })();
 }
 
 // ─── Route handlers ───────────────────────────────────────────────────────────
@@ -211,7 +227,7 @@ async function runJob(jobId, endpoint, payload) {
 async function handleModels(body) {
   validate(body, ["prompt"]);
   const jobId = newJobId();
-  jobs.set(jobId, { status: "pending", created: Date.now() });
+  jobs.set(jobId, { status: "pending", type: "image", created: Date.now() });
   runJob(jobId, MODEL_GENERATE, {
     prompt: body.prompt,
     width:  body.width  || 832,
@@ -232,12 +248,15 @@ async function handleFittings(body) {
     toBase64ForBFL(body.garment_b64 || body.garment_url),
   ]);
   const jobId = newJobId();
-  jobs.set(jobId, { status: "pending", created: Date.now() });
+  jobs.set(jobId, { status: "pending", type: "image", created: Date.now() });
   runJob(jobId, MODEL_VTO, {
     person:  personB64,
     garment: garmentB64,
-    prompt:  body.prompt ||
-      "The person of image 1, maintaining exactly their face and pose, wearing the garment of image 2.",
+    prompt:  withScene(
+      body.prompt ||
+        "The person of image 1, maintaining exactly their face and pose, wearing the garment of image 2.",
+      body.scene,
+    ),
     output_format: "jpeg",
   });
   return { job_id: jobId };
@@ -258,25 +277,250 @@ async function handleOutfits(body) {
   console.log(`[outfits] composite ${body.garment_urls.length} garments → ${compositeBuf.length}B`);
 
   const jobId = newJobId();
-  jobs.set(jobId, { status: "pending", created: Date.now() });
+  jobs.set(jobId, { status: "pending", type: "image", created: Date.now() });
   runJob(jobId, MODEL_VTO, {
     person:  personB64,
     garment: compositeB64,
-    prompt:  body.prompt,
+    prompt:  withScene(body.prompt, body.scene),
     output_format: "jpeg",
   });
   return { job_id: jobId };
+}
+
+// POST /accessories
+// Body: { person_url | person_b64 | person_job_id, accessory_url | accessory_b64,
+//         carry_style?, accessory_desc?, prompt?, width?, height? }
+// → FLUX.2 multi-reference: person + bag/accessory product shot
+async function handleAccessories(body) {
+  let personSrc = body.person_b64 || body.person_url;
+  if (body.person_job_id) {
+    const src = jobs.get(body.person_job_id);
+    if (!src?.jpeg) throw new ClientError("person_job_id not found or not ready", 404);
+    personSrc = `data:image/jpeg;base64,${src.jpeg.toString("base64")}`;
+  }
+  if (!personSrc) throw new ClientError('"person_url", "person_b64", or "person_job_id" is required', 400);
+
+  const accessorySrc = body.accessory_b64 || body.accessory_url;
+  if (!accessorySrc) throw new ClientError('"accessory_url" or "accessory_b64" is required', 400);
+
+  const carryStyle = body.carry_style || "backpack";
+  if (!CARRY_STYLES.includes(carryStyle)) {
+    throw new ClientError(`carry_style must be one of: ${CARRY_STYLES.join(", ")}`, 400);
+  }
+
+  const [personB64, accessoryB64] = await Promise.all([
+    toBase64ForBFL(personSrc),
+    toBase64ForBFL(accessorySrc),
+  ]);
+
+  const scene = body.scene || "urban";
+  if (body.scene && !SCENE_IDS.includes(body.scene)) {
+    throw new ClientError(`scene must be one of: ${SCENE_IDS.join(", ")}`, 400);
+  }
+
+  const prompt = body.prompt || buildAccessoryPrompt({
+    accessory_desc: body.accessory_desc,
+    carry_style: carryStyle,
+    scene,
+  });
+
+  const jobId = newJobId();
+  jobs.set(jobId, {
+    status: "pending",
+    type: "accessory",
+    carry_style: carryStyle,
+    created: Date.now(),
+  });
+
+  const reframeBack = body.reframe_back !== false;
+  console.log(
+    `[accessories/${jobId}] ${MODEL_ACCESSORY} carry=${carryStyle}` +
+    (carryStyle === "backpack" && reframeBack ? " (2-step back view)" : "")
+  );
+
+  runAccessoryJob(jobId, {
+    personB64,
+    accessoryB64,
+    carryStyle,
+    scene,
+    prompt,
+    accessoryDesc: body.accessory_desc,
+    width: body.width,
+    height: body.height,
+    safety_tolerance: body.safety_tolerance,
+    reframeBack,
+  });
+
+  return {
+    job_id: jobId,
+    model: MODEL_ACCESSORY,
+    carry_style: carryStyle,
+    scene,
+    reframe_back: carryStyle === "backpack" && reframeBack,
+  };
+}
+
+// POST /animations
+// Body: { image_url | image_job_id, mode?, clips? }
+//   mode "sequence" (default) — 4 chained Viking moods → one stitched MP4
+//   mode "arc"              — 1×10s continuous arc
+//   mode "reveal"           — outfit reveal: base → shirt → combo → calm
+//     requires: base_image_url, shirt_job_id, combo_job_id
+//     optional: shirt_desc, jacket_desc
+async function handleAnimations(body) {
+  if (!GEN3) throw new ClientError("GEN3_API_KEY not configured", 503);
+
+  if (body.mode === "reveal") return handleRevealAnimation(body);
+
+  let sequence;
+  try {
+    sequence = resolveAnimationSequence(body);
+  } catch (e) {
+    throw new ClientError(e.message, 400);
+  }
+
+  let imageInput;
+  if (body.image_job_id) {
+    const src = jobs.get(body.image_job_id);
+    if (!src?.jpeg) throw new ClientError("image job not found or not ready", 404);
+    imageInput = jpegToDataUri(src.jpeg);
+  } else if (body.image_url?.startsWith("data:")) {
+    imageInput = body.image_url;
+  } else if (body.image_url) {
+    try {
+      imageInput = resolvePublicImageUrl(body.image_url, PUBLIC_BASE);
+    } catch (e) {
+      throw new ClientError(e.message, 400);
+    }
+  } else {
+    throw new ClientError('"image_url" or "image_job_id" is required', 400);
+  }
+
+  const jobId = newJobId();
+  const cost = withCarbonEstimate(estimateSequenceCost(sequence, RUNWAY_MODEL));
+  jobs.set(jobId, {
+    status: "pending",
+    type: "animation",
+    mode: body.mode === "arc" ? "arc" : "sequence",
+    created: Date.now(),
+    clips: [],
+    cost,
+    model: RUNWAY_MODEL,
+    ratio: RUNWAY_RATIO,
+  });
+  runAnimationJob(jobs, jobId, GEN3, sequence, {
+    defaultImage: imageInput,
+    model: RUNWAY_MODEL,
+    ratio: RUNWAY_RATIO,
+    stitch: body.stitch !== false,
+  });
+  return { job_id: jobId, cost };
+}
+
+async function handleRevealAnimation(body) {
+  if (!body.shirt_job_id || !body.combo_job_id) {
+    throw new ClientError('"shirt_job_id" and "combo_job_id" are required for mode reveal', 400);
+  }
+
+  const baseUrl = body.base_image_url || body.person_url || body.image_url;
+  if (!baseUrl) {
+    throw new ClientError('"base_image_url" (or person_url) is required for mode reveal', 400);
+  }
+
+  const shirtJob = jobs.get(body.shirt_job_id);
+  const comboJob = jobs.get(body.combo_job_id);
+  if (!shirtJob?.jpeg) throw new ClientError("shirt_job_id not found or not ready", 404);
+  if (!comboJob?.jpeg) throw new ClientError("combo_job_id not found or not ready", 404);
+
+  let baseInput;
+  if (baseUrl.startsWith("data:")) {
+    baseInput = baseUrl;
+  } else {
+    try {
+      baseInput = resolvePublicImageUrl(baseUrl, PUBLIC_BASE);
+    } catch (e) {
+      throw new ClientError(e.message, 400);
+    }
+  }
+
+  const sequence = buildOutfitRevealSequence({
+    shirt_desc: body.shirt_desc,
+    jacket_desc: body.jacket_desc,
+  }).filter(c => {
+    if (!Array.isArray(body.clips) || body.clips.length === 0) return true;
+    return body.clips.includes(c.name);
+  });
+  if (sequence.length === 0) {
+    throw new ClientError("no reveal clips matched body.clips", 400);
+  }
+
+  const jobId = newJobId();
+  const cost = withCarbonEstimate(estimateSequenceCost(sequence, RUNWAY_MODEL));
+  jobs.set(jobId, {
+    status: "pending",
+    type: "animation",
+    mode: "reveal",
+    created: Date.now(),
+    clips: [],
+    cost,
+    model: RUNWAY_MODEL,
+    ratio: RUNWAY_RATIO,
+  });
+
+  runAnimationJob(jobs, jobId, GEN3, sequence, {
+    imageMap: {
+      base: baseInput,
+      shirt: jpegToDataUri(shirtJob.jpeg),
+      combo: jpegToDataUri(comboJob.jpeg),
+    },
+    model: RUNWAY_MODEL,
+    ratio: RUNWAY_RATIO,
+    stitch: body.stitch !== false,
+  });
+
+  return { job_id: jobId, cost, mode: "reveal" };
+}
+
+// GET /runway/balance — live credit balance from Runway dev portal
+async function handleRunwayBalance() {
+  if (!GEN3) throw new ClientError("GEN3_API_KEY not configured", 503);
+  return fetchRunwayOrganization(GEN3);
 }
 
 // GET /jobs/:id
 function handleJobStatus(jobId) {
   const job = jobs.get(jobId);
   if (!job) throw new ClientError("job not found", 404);
+
+  if (job.type === "animation") {
+    const hasStitch = Boolean(job.stitched_mp4);
+    return {
+      status:         job.status,
+      type:           "animation",
+      mode:           job.mode,
+      model:          job.model,
+      clips:          job.clips,
+      video_urls:     job.status === "ready" ? job.video_urls : undefined,
+      video_url:      job.status === "ready" && hasStitch ? `/videos/${jobId}` : undefined,
+      total_duration: job.total_duration,
+      cost:           job.cost,
+      error:          job.error,
+    };
+  }
+
   return {
-    status:     job.status,
-    image_url:  job.status === "ready" ? `/images/${jobId}` : undefined,
-    error:      job.error,
+    status:    job.status,
+    type:      job.type || "image",
+    image_url: job.status === "ready" ? `/images/${jobId}` : undefined,
+    error:     job.error,
   };
+}
+
+// GET /videos/:id — stitched animation MP4
+function handleVideo(jobId) {
+  const job = jobs.get(jobId);
+  if (!job?.stitched_mp4) throw new ClientError("video not found", 404);
+  return { bytes: job.stitched_mp4, contentType: "video/mp4" };
 }
 
 // GET /images/:id  (content-negotiated: WebP or JPEG)
@@ -289,7 +533,7 @@ function handleImage(jobId, acceptHeader) {
     : { bytes: job.jpeg, contentType: "image/jpeg" };
 }
 
-// ─── HTTP layer ───────────────────────────────────────────────────────────────
+// ─── HTTP layer ──────────────────────────────────────────────────────────────
 
 class ClientError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
@@ -299,17 +543,6 @@ function validate(body, required) {
   for (const f of required) {
     if (!body[f]) throw new ClientError(`"${f}" is required`, 400);
   }
-}
-
-function corsHeaders(origin) {
-  const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
-  return {
-    "Access-Control-Allow-Origin":  allow,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Accept",
-    "Access-Control-Max-Age":       "600",
-    "Vary": "Origin",
-  };
 }
 
 async function readBody(req) {
@@ -349,13 +582,16 @@ function matchRoute(method, url, routes) {
 
 const ROUTES = [
   // Liveness
-  ["GET", "/healthz", async () => ({ ok: true })],
+  ["GET", "/healthz",        async () => ({ ok: true })],
+  ["GET", "/runway/balance", async () => handleRunwayBalance()],
 
   // Resources
-  ["POST", "/models",   async (b) => handleModels(b)],
-  ["POST", "/fittings", async (b) => handleFittings(b)],
-  ["POST", "/outfits",  async (b) => handleOutfits(b)],
-  ["GET",  "/jobs/:id", async (_, p) => handleJobStatus(p.id)],
+  ["POST", "/models",      async (b) => handleModels(b)],
+  ["POST", "/fittings",    async (b) => handleFittings(b)],
+  ["POST", "/outfits",     async (b) => handleOutfits(b)],
+  ["POST", "/accessories", async (b) => handleAccessories(b)],
+  ["POST", "/animations",  async (b) => handleAnimations(b)],
+  ["GET",  "/jobs/:id",    async (_, p) => handleJobStatus(p.id)],
   // /images/:id is handled separately (binary response)
 ];
 
@@ -367,6 +603,24 @@ const server = createServer(async (req, res) => {
   if (method === "OPTIONS") {
     res.writeHead(204, corsHeaders(origin));
     res.end();
+    return;
+  }
+
+  // Binary video serving (stitched animation)
+  if (method === "GET" && url.startsWith("/videos/")) {
+    const jobId = url.slice("/videos/".length).split("?")[0];
+    try {
+      const { bytes, contentType } = handleVideo(jobId);
+      res.writeHead(200, {
+        "Content-Type":  contentType,
+        "Content-Length": bytes.length,
+        "Cache-Control": "public, max-age=3600",
+        ...corsHeaders(origin),
+      });
+      res.end(bytes);
+    } catch (e) {
+      sendJSON(res, origin, { error: e.message }, e.status ?? 500);
+    }
     return;
   }
 
@@ -411,10 +665,10 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`\n  dexm VTO proxy → http://localhost:${PORT}`);
-  console.log(`  routes: POST /models  POST /fittings  POST /outfits`);
-  console.log(`          GET  /jobs/:id  GET /images/:id`);
+  console.log(`  routes: POST /models  POST /fittings  POST /outfits  POST /accessories  POST /animations`);
+  console.log(`          GET  /jobs/:id  GET /images/:id  GET /videos/:id  GET /runway/balance`);
+  console.log(`  runway: ${GEN3 ? `${RUNWAY_MODEL} enabled` : "disabled (set GEN3_API_KEY)"}`);
   console.log(`  origins: ${ALLOWED_ORIGINS.join(", ")}\n`);
 });
 
-// ─── Util ─────────────────────────────────────────────────────────────────────
 const delay = ms => new Promise(r => setTimeout(r, ms));
