@@ -456,6 +456,14 @@ async function handleRevealAnimation(body) {
 
   const jobId = newJobId();
   const cost = withCarbonEstimate(estimateSequenceCost(sequence, RUNWAY_MODEL));
+  const { credit_balance } = await fetchRunwayOrganization(GEN3);
+  if (credit_balance < cost.estimated_credits) {
+    throw new ClientError(
+      `Need ~${cost.estimated_credits} Runway credits for this reveal (${RUNWAY_MODEL}); balance is ${credit_balance}. Top up at https://dev.runwayml.com`,
+      402,
+    );
+  }
+
   jobs.set(jobId, {
     status: "pending",
     type: "animation",
@@ -484,7 +492,19 @@ async function handleRevealAnimation(body) {
 // GET /runway/balance — live credit balance from Runway dev portal
 async function handleRunwayBalance() {
   if (!GEN3) throw new ClientError("GEN3_API_KEY not configured", 503);
-  return fetchRunwayOrganization(GEN3);
+  const org = await fetchRunwayOrganization(GEN3);
+  const revealCost = estimateSequenceCost(buildOutfitRevealSequence({}), RUNWAY_MODEL);
+  const need = revealCost.estimated_credits;
+  return {
+    ...org,
+    runway_model: RUNWAY_MODEL,
+    reveal: {
+      clip_count: revealCost.clip_count,
+      estimated_credits: need,
+      estimated_usd: revealCost.estimated_usd,
+    },
+    sufficient_for_reveal: org.credit_balance >= need,
+  };
 }
 
 // GET /jobs/:id

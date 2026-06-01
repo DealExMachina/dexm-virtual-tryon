@@ -809,6 +809,64 @@
       min-height: 18px;
     }
 
+    .runway-credits {
+      margin-top: 14px;
+      padding: 12px 14px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+    .runway-credits-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .runway-credits-title {
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+    }
+    .runway-credits-num {
+      font-family: var(--serif);
+      font-size: 18px;
+      color: var(--ink);
+    }
+    .runway-credits-bar {
+      height: 6px;
+      background: var(--bg-alt);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    .runway-credits-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.4s ease, background 0.3s ease;
+      background: var(--accent);
+    }
+    .runway-credits-fill.low { background: #C26A4D; }
+    .runway-credits-fill.ok { background: var(--accent); }
+    .runway-credits-note {
+      font-size: 11px;
+      color: var(--ink-mid);
+      line-height: 1.5;
+      letter-spacing: 0.3px;
+    }
+    .runway-credits-warn {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 4px;
+      border: 1px solid rgba(194, 106, 77, 0.35);
+      background: rgba(194, 106, 77, 0.08);
+      font-size: 12px;
+      color: var(--ink);
+      line-height: 1.55;
+    }
+    .runway-credits-warn a { color: var(--accent); }
+
     .combo-gift {
       margin-top: 18px;
       padding-top: 18px;
@@ -945,6 +1003,17 @@
             </div>
             <div class="label">Piece</div>
           </div>
+        </div>
+
+        <div id="runwayCredits" class="runway-credits" hidden aria-live="polite">
+          <div class="runway-credits-head">
+            <span class="runway-credits-title">Runway film credits</span>
+            <span class="runway-credits-num" id="runwayCreditsNum">—</span>
+          </div>
+          <div class="runway-credits-bar" title="Balance vs fitting reveal">
+            <div class="runway-credits-fill ok" id="runwayCreditsFill" style="width:0%"></div>
+          </div>
+          <div class="runway-credits-note" id="runwayCreditsNote">Checking the atelier…</div>
         </div>
 
         <div id="vtoStatus" class="status"></div>
@@ -1264,6 +1333,94 @@
       return d;
     }
 
+    window._runwayCredits = null;
+
+    async function refreshRunwayCredits() {
+      const panel = document.getElementById('runwayCredits');
+      if (!isProxyConfigured()) {
+        panel?.setAttribute('hidden', '');
+        return null;
+      }
+      panel?.removeAttribute('hidden');
+      const note = document.getElementById('runwayCreditsNote');
+      if (note) note.textContent = 'Checking Runway balance…';
+      try {
+        const r = await fetch(`${PROXY}/runway/balance`);
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        window._runwayCredits = data;
+        renderRunwayCreditGauge(data);
+        return data;
+      } catch (e) {
+        window._runwayCredits = null;
+        const num = document.getElementById('runwayCreditsNum');
+        const fill = document.getElementById('runwayCreditsFill');
+        if (num) num.textContent = '—';
+        if (fill) fill.style.width = '0%';
+        if (note) note.textContent = 'Runway balance unavailable.';
+        return null;
+      }
+    }
+
+    function renderRunwayCreditGauge(data) {
+      const balance = data.credit_balance ?? 0;
+      const need = data.reveal?.estimated_credits ?? 100;
+      const model = data.runway_model || 'gen3a_turbo';
+      const ok = data.sufficient_for_reveal !== false && balance >= need;
+
+      const num = document.getElementById('runwayCreditsNum');
+      const fill = document.getElementById('runwayCreditsFill');
+      const note = document.getElementById('runwayCreditsNote');
+      if (num) num.textContent = balance.toLocaleString();
+      if (fill) {
+        const pct = need > 0 ? Math.min(100, Math.round((balance / need) * 100)) : 100;
+        fill.style.width = `${pct}%`;
+        fill.classList.toggle('low', !ok);
+        fill.classList.toggle('ok', ok);
+      }
+      if (note) {
+        note.textContent = ok
+          ? `Fitting reveal uses ~${need} credits (${model}) — you are covered.`
+          : `Fitting reveal needs ~${need} credits (${model}); you have ${balance.toLocaleString()}.`;
+      }
+
+      const warn = document.getElementById('runwayRevealWarn');
+      if (warn) {
+        warn.hidden = ok;
+        if (!ok) {
+          warn.innerHTML =
+            'Need more <strong>Runway</strong> credits before we compose the film. ' +
+            '<a href="https://dev.runwayml.com" target="_blank" rel="noopener">Top up at dev.runwayml.com</a>, then refresh. ' +
+            'Your still fitting stays on view.';
+        }
+      }
+    }
+
+    function restoreLastFittingStill() {
+      const s = window._revealState;
+      if (s?.giftImageUrl) { showGiftLook(); return; }
+      if (s?.comboImageUrl) { showComboLook(); return; }
+    }
+
+    function showRunwayCreditsMessage(html) {
+      const progress = document.getElementById('revealProgress');
+      if (progress) progress.innerHTML = `<div class="runway-credits-warn">${html}</div>`;
+    }
+
+    function runwayCreditsBlockedMessage(credits) {
+      const need = credits?.reveal?.estimated_credits ?? 100;
+      const balance = credits?.credit_balance ?? 0;
+      if (!credits) {
+        return 'We could not read Runway credits from the atelier. Check your connection and try again — your last generation remains on view.';
+      }
+      return (
+        `Need more <strong>Runway</strong> credits for the fitting reveal ` +
+        `(~${need} required, ${balance.toLocaleString()} on hand). ` +
+        '<a href="https://dev.runwayml.com" target="_blank" rel="noopener">Add credits at dev.runwayml.com</a> — ' +
+        'your last generation remains on view.'
+      );
+    }
+
     // ─── Polling helper ───
     async function pollJob(jobId, onProgress) {
       for (let i = 0; i < 240; i++) {
@@ -1469,6 +1626,7 @@
         document.getElementById('vtoStatus').after(panel);
       }
       panel.innerHTML = `
+        <div id="runwayRevealWarn" class="runway-credits-warn" hidden></div>
         <button class="btn btn-reveal" id="revealBtn" onclick="playOutfitReveal()">
           Play the fitting reveal
         </button>
@@ -1476,6 +1634,7 @@
         <div style="font-size:11px;color:var(--ink-dim);margin-top:6px;letter-spacing:1px;">
           A four-beat film: likeness → ${base.name} → full look → calm confidence
         </div>`;
+      refreshRunwayCredits();
     }
 
     // ─── Complimentary Targus backpack — unlocked with the complete look ───
@@ -1609,6 +1768,24 @@
 
       const btn = document.getElementById('revealBtn');
       const progress = document.getElementById('revealProgress');
+      if (btn) { btn.disabled = true; btn.textContent = 'Checking credits…'; }
+      if (progress) progress.textContent = '';
+
+      let credits = window._runwayCredits;
+      if (!credits) credits = await refreshRunwayCredits();
+
+      const need = credits?.reveal?.estimated_credits ?? 100;
+      const balance = credits?.credit_balance ?? 0;
+      const sufficient = credits && (credits.sufficient_for_reveal !== false) && balance >= need;
+
+      if (!sufficient) {
+        restoreLastFittingStill();
+        showRunwayCreditsMessage(runwayCreditsBlockedMessage(credits));
+        if (btn) { btn.disabled = false; btn.textContent = 'Play the fitting reveal'; }
+        await refreshRunwayCredits();
+        return;
+      }
+
       if (btn) { btn.disabled = true; btn.textContent = 'Rendering the reveal…'; }
       progress.textContent = 'The atelier is preparing your film (~15–20 min on gen4.5)…';
 
@@ -1630,7 +1807,17 @@
             jacket_desc: jacketDesc,
           }),
         });
-        const { job_id, cost } = await parseProxyJSON(r);
+        const payload = await r.json();
+        if (!r.ok) {
+          if (r.status === 402) {
+            restoreLastFittingStill();
+            showRunwayCreditsMessage(runwayCreditsBlockedMessage(window._runwayCredits));
+            await refreshRunwayCredits();
+            return;
+          }
+          throw new Error(payload.error || `proxy returned ${r.status}`);
+        }
+        const { job_id, cost } = payload;
         progress.textContent = cost
           ? `Runway estimate: ~${cost.estimated_credits} credits · polling…`
           : 'Polling the atelier…';
@@ -1655,9 +1842,14 @@
           progress.innerHTML = `<span style="color:#C26A4D">${jobErrorMessage(d)}</span>`;
         }
       } catch (e) {
-        document.getElementById('resultSlot').innerHTML =
-          `<div class="result-icon">&#10038;</div><div>The atelier is unreachable.</div>`;
-        progress.innerHTML = `<span style="color:#C26A4D">${e.message}</span>`;
+        if (/Runway credits|Need ~\d+ Runway/i.test(e.message)) {
+          restoreLastFittingStill();
+          showRunwayCreditsMessage(runwayCreditsBlockedMessage(window._runwayCredits));
+          await refreshRunwayCredits();
+        } else {
+          restoreLastFittingStill();
+          progress.innerHTML = `<span style="color:#C26A4D">${e.message}</span>`;
+        }
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Play the fitting reveal'; }
       }
@@ -1692,6 +1884,7 @@
     renderLikenessPrompts();
     renderProducts();
     selectPreset(0);
+    if (isProxyConfigured()) refreshRunwayCredits();
   </script>
 </body>
 </html>
