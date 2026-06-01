@@ -12,8 +12,11 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test:unit": "node --test test/unit.test.js test/runway.test.js test/accessories.test.js",
+    "test:unit": "node --test test/unit.test.js test/runway.test.js test/accessories.test.js test/smoke-reveal.test.js",
+    "test:smoke": "node --test test/smoke.test.js test/smoke-reveal.test.js test/smoke-reveal-http.test.js",
+    "test:smoke:live": "node --test test/smoke-live.test.js",
+    "smoke:live": "node scripts/smoke-live.mjs",
     "test:e2e":  "node --test --env-file=../../baziszt-tryon/.env test/e2e.test.js",
-    "test":      "node --test test/unit.test.js test/runway.test.js test/accessories.test.js"
+    "test":      "node --test test/unit.test.js test/runway.test.js test/accessories.test.js test/smoke-reveal.test.js test/smoke.test.js test/smoke-reveal-http.test.js"
   }
 }
